@@ -1,0 +1,6 @@
+# Fins de ligne normalisées dans le dépôt (LF), adaptées à l'extraction
+* text=auto eol=lf
+*.bat text eol=crlf
+*.command text eol=lf
+*.png binary
+*.zip binary

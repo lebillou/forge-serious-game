@@ -1,0 +1,24 @@
+{
+  "name": "forge",
+  "version": "1.0.0",
+  "description": "Serious game de gestion industrielle : une version un poste et une version multi-poste",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/build.mjs && node server/server.mjs",
+    "test": "node --test test/engine.test.js",
+    "test:ui": "node test/ui.test.mjs && node test/standalone.test.mjs",
+    "test:net": "node test/net.test.mjs",
+    "test:all": "npm run build && npm test && npm run test:ui && npm run test:net",
+    "package": "node scripts/build.mjs && node scripts/package.mjs",
+    "tournoi": "node tools/sim.mjs tour 40"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2",
+    "jsdom": "24.1.3",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

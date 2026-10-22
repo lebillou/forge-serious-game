@@ -1,0 +1,45 @@
+name: Publier une version
+
+# Déclenché par un tag v1.0.0, v1.1.0… : teste, assemble et attache les fichiers
+# distribuables à une nouvelle version GitHub (onglet Releases).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Tests
+        run: |
+          npm test
+          npm run test:ui
+          npm run test:net
+      - name: Numéro de version tiré du tag
+        run: npm pkg set version="${GITHUB_REF_NAME#v}"
+      - name: Assemblage des fichiers distribuables
+        run: |
+          node scripts/package.mjs
+          cd release
+          zip -r "../forge-multiposte-${GITHUB_REF_NAME}.zip" forge-multiposte
+          cp forge-un-poste.html "../forge-un-poste-${GITHUB_REF_NAME}.html"
+      - name: Création de la version GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "forge-multiposte-${GITHUB_REF_NAME}.zip" \
+            "forge-un-poste-${GITHUB_REF_NAME}.html" \
+            --title "Forge ${GITHUB_REF_NAME}" \
+            --notes-file .github/release-notes.md

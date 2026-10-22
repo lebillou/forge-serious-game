@@ -1,0 +1,20 @@
+# dépendances
+node_modules/
+
+# fichiers générés par « npm run build » et « npm run package »
+dist/
+server/public/
+release/
+*.zip
+
+# données du serveur (partie en cours, code animateur)
+server/data/
+data/
+
+# système
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+.vscode/
+.idea/

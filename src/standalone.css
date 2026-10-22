@@ -1,0 +1,6 @@
+/* Réinitialisation des pages autonomes (hors claude.ai, qui fournit la sienne). */
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }

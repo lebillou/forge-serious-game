@@ -1,0 +1,40 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 18 : version minimale annoncée pour le serveur ; 22 : version LTS de référence
+        node: [18, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Assemblage des pages
+        run: npm run build
+      - name: Moteur (équilibre comptable, déterminisme, sauvegarde, M&A, événements)
+        run: npm test
+      - name: Interface un poste (claude.ai et version autonome)
+        run: npm run test:ui
+      - name: Multi-poste de bout en bout (serveur réel, trois navigateurs)
+        run: npm run test:net
