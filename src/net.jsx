@@ -310,10 +310,10 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
   const [draft, setDraft] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [save, setSave] = useState('idle'); // idle | pending | saving | saved | error
-  const [resetKey, setResetKey] = useState(0);
   const quarterRef = useRef(null);
   const timerRef = useRef(null);
   const latest = useRef(null);
+  const pushRef = useRef(null);
 
   const G = view && view.G;
   const fid = view && view.firmId;
@@ -327,7 +327,7 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
       quarterRef.current = key;
       clearTimeout(timerRef.current);
       setDraft(view.draft); setSubmitted(view.submitted); setSave('idle');
-      if (!first) { setResetKey((k) => k + 1); onToast(G.phase === 'finished' ? 'Partie terminée : le débriefing est disponible.' : `Trimestre ${QL(G.t)} résolu : votre rapport est disponible.`); }
+      if (!first) { onToast(G.phase === 'finished' ? 'Partie terminée : le débriefing est disponible.' : `Trimestre ${QL(G.t)} résolu : votre rapport est disponible.`); }
     } else if (save === 'idle' || save === 'saved') {
       setSubmitted(view.submitted);
     }
@@ -340,11 +340,19 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
       if (latest.current === d) setSave('saved');
       if (submit) { setSubmitted(true); onToast('Décisions validées. Vous pouvez encore les modifier jusqu’à la résolution.'); }
     } catch (e) {
+      if (e.status === 0) {
+        // coupure réseau ou serveur redémarré : nouvel essai tant que la saisie n'a pas changé
+        setSave('retry');
+        clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => { if (latest.current === d) pushRef.current(d, submit); }, 3000);
+        return;
+      }
       setSave('error');
       onToast(e.message);
       if (e.status === 409) reload().catch(() => {});
     }
   }, [code, q, onToast, reload]);
+  pushRef.current = push;
 
   if (!status) return <div className="panel"><p className="muted">Connexion au serveur…</p></div>;
   if (!status.hasGame || !G) {
@@ -374,7 +382,7 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
     latest.current = d;
     push(d, true);
   };
-  const saveLabel = { idle: draft ? 'Brouillon enregistré' : 'Non validé', pending: 'Modifications en cours…', saving: 'Enregistrement…', saved: 'Brouillon enregistré', error: 'Non enregistré' }[save];
+  const saveLabel = { idle: draft ? 'Brouillon enregistré' : 'Non validé', pending: 'Modifications en cours…', saving: 'Enregistrement…', saved: 'Brouillon enregistré', error: 'Non enregistré', retry: 'Non enregistré · nouvel essai automatique' }[save];
 
   const extraTabs = [
     { key: 'public', label: 'Classement', render: () => (
@@ -387,7 +395,7 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
   if (finished) extraTabs.unshift({ key: 'debrief', label: 'Débriefing', render: () => <Debrief G={G} /> });
 
   return (
-    <TeamConsole G={G} firmId={fid} draft={draft} submitted={submitted} onDraft={finished ? null : onDraft} resetKey={resetKey} extraTabs={extraTabs}
+    <TeamConsole key={finished ? 'fin' : `q${G.t}`} G={G} firmId={fid} draft={draft} submitted={submitted} onDraft={finished ? null : onDraft} extraTabs={extraTabs}
       subtitle={finished ? 'Partie terminée' : `Décisions pour ${QL(q)} · ${nDone}/${G.firms.length} équipes ont validé`}
       actions={<>
         {!finished && status.deadline && <Countdown deadline={status.deadline} skew={skew} />}

@@ -381,11 +381,10 @@ export const TABS = [
 ];
 
 
-export function TeamConsole({ G, firmId, draft, onDraft, submitted, actions, subtitle, extraTabs = [], resetKey }) {
+export function TeamConsole({ G, firmId, draft, onDraft, submitted, actions, subtitle, extraTabs = [] }) {
   const f = G.firms.find((x) => x.id === firmId);
   const finished = G.phase === 'finished';
   const [tab, setTab] = useState('synthese');
-  useEffect(() => { setTab('synthese'); }, [resetKey]);
   const canDecide = !finished && !!onDraft;
   const tabs = [...TABS.filter(([k]) => k !== 'decisions' || canDecide), ...extraTabs.map((t) => [t.key, t.label])];
   const d = draft || E.defaultDecisions(G, f);

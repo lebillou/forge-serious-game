@@ -13,6 +13,7 @@ const ADMIN = 'PROF42';
 let proc;
 let serverErr = '';
 const browsers = [];
+const ql = (q) => `A${Math.floor((q - 1) / 4) + 1}·T${((q - 1) % 4) + 1}`;
 const log = (m) => process.stdout.write(`· ${m}\n`);
 
 function startServer() {
@@ -141,11 +142,14 @@ try {
     }
     if (q < 6) await A.click(A.btn('Continuer'), 'continuer');
     else await A.click(A.btn('Débriefing final'), 'débriefing');
-    await until(() => T1.text().includes(q < 6 ? `Diagnostic du trimestre ${['A1·T1', 'A1·T2', 'A1·T3', 'A1·T4', 'A2·T1', 'A2·T2'][q - 1]}` : 'Partie terminée'), 'rapport Rouge T' + q);
+    // les deux équipes doivent afficher le nouveau trimestre avant toute saisie (sondage toutes les 2,5 s)
+    const next = q < 6 ? `Décisions pour ${ql(q + 1)}` : 'Partie terminée';
+    for (const T of [T1, T2]) await until(() => (T.$('.console-head .muted')?.textContent || '').startsWith(next), `${T.name} : passage à ${next}`, 12000);
     if (q === 4) {
       // redémarrage du serveur en cours de partie
       await stopServer(); await startServer();
-      await until(() => !T1.text().includes('Connexion au serveur perdue'), 'reconnexion');
+      await tick(3000); // au moins un sondage de chaque poste pendant ou après la coupure
+      for (const T of [T1, T2]) await until(() => !T.$('.conn-lost') && (T.$('.console-head .muted')?.textContent || '').startsWith(`Décisions pour ${ql(5)}`), `${T.name} : reconnexion`, 12000);
       log('redémarrage du serveur : reprise transparente');
     }
     log(`trimestre ${q} joué`);
@@ -175,7 +179,7 @@ try {
   for (const b of [A, T1, T2]) b.close();
 } catch (e) {
   // Annotation GitHub Actions : la cause s'affiche dans le résumé de l'exécution.
-  const shot = browsers.map((b) => { try { return `${b.name} : ${(b.doc.getElementById('app')?.textContent || '').slice(0, 220)}`; } catch { return ''; } }).join(' || ');
+  const shot = browsers.map((b) => { try { return `${b.name} : [état ${b.doc.querySelector('.save-state')?.textContent || b.doc.querySelector('.chip-ok')?.textContent || '-'} | toast ${b.doc.querySelector('.toast')?.textContent || '-'} | bandeau ${b.doc.querySelector('.conn-lost') ? 'connexion perdue' : 'non'} | ${b.doc.querySelector('.console-head .muted')?.textContent || ''}]`; } catch { return ''; } }).join(' || ');
   const msg = [`${e.message}`, (e.stack || '').split('\n').slice(1, 3).join(' '), shot && `Écrans : ${shot}`, serverErr && `Serveur : ${serverErr.slice(-400)}`,
     browsers.some((b) => b.errors.length) && `Console : ${browsers.map((b) => b.errors.join(' | ')).join(' || ').slice(0, 400)}`].filter(Boolean).join(' — ');
   if (process.env.GITHUB_ACTIONS) console.log(`::error title=Test multi-poste::${msg.replace(/%/g, '%25').replace(/\r/g, '').replace(/\n/g, '%0A')}`);
