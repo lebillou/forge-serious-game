@@ -11,6 +11,8 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const DATA = mkdtempSync(path.join(tmpdir(), 'forge-'));
 const ADMIN = 'PROF42';
 let proc;
+let serverErr = '';
+const browsers = [];
 const log = (m) => process.stdout.write(`· ${m}\n`);
 
 function startServer() {
@@ -18,7 +20,7 @@ function startServer() {
     proc = spawn(process.execPath, ['server/server.mjs'], { env: { ...process.env, PORT: String(PORT), FORGE_DATA: DATA, FORGE_ADMIN: ADMIN }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     proc.stdout.on('data', (d) => { out += d; if (out.includes('Code animateur')) resolve(out); });
-    proc.stderr.on('data', (d) => process.stderr.write(d));
+    proc.stderr.on('data', (d) => { serverErr += d; process.stderr.write(d); });
     proc.on('exit', (c) => { if (!out.includes('Code animateur')) reject(new Error('serveur arrêté ' + c)); });
   });
 }
@@ -47,7 +49,7 @@ function browser(name) {
       w.console.warn = (...a) => errors.push('WARN ' + a.map(String).join(' '));
       w.addEventListener('error', (e) => errors.push('erreur : ' + e.message));
     } });
-    this.dom = d; this.w = d.window; this.doc = d.window.document; return this;
+    this.dom = d; this.w = d.window; this.doc = d.window.document; browsers.push(this); return this;
   },
   $(s) { return this.doc.querySelector(s); }, $$(s) { return [...this.doc.querySelectorAll(s)]; },
   text() { const a = this.doc.getElementById('app'); return a ? a.textContent : ''; },
@@ -171,6 +173,13 @@ try {
   for (const b of [A, T1, T2]) b.check();
   log('aucune erreur ni avertissement React sur les trois postes');
   for (const b of [A, T1, T2]) b.close();
+} catch (e) {
+  // Annotation GitHub Actions : la cause s'affiche dans le résumé de l'exécution.
+  const shot = browsers.map((b) => { try { return `${b.name} : ${(b.doc.getElementById('app')?.textContent || '').slice(0, 220)}`; } catch { return ''; } }).join(' || ');
+  const msg = [`${e.message}`, (e.stack || '').split('\n').slice(1, 3).join(' '), shot && `Écrans : ${shot}`, serverErr && `Serveur : ${serverErr.slice(-400)}`,
+    browsers.some((b) => b.errors.length) && `Console : ${browsers.map((b) => b.errors.join(' | ')).join(' || ').slice(0, 400)}`].filter(Boolean).join(' — ');
+  if (process.env.GITHUB_ACTIONS) console.log(`::error title=Test multi-poste::${msg.replace(/%/g, '%25').replace(/\r/g, '').replace(/\n/g, '%0A')}`);
+  throw e;
 } finally {
   if (proc && proc.exitCode === null) await stopServer();
   rmSync(DATA, { recursive: true, force: true });
