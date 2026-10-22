@@ -67,12 +67,14 @@ tools/
 ## Intégration continue et publication
 
 - **Tests** (`.github/workflows/tests.yml`) : à chaque envoi sur `main` et à chaque pull request, sous Node 18 et 22.
-- **Versions** (`.github/workflows/release.yml`) : un tag `vX.Y.Z` lance les tests, puis crée une version GitHub avec l'archive multi-poste et le fichier un poste attachés.
+- **Versions** (`.github/workflows/release.yml`) : lance les tests, puis crée une version GitHub avec l'archive multi-poste et le fichier un poste attachés. Deux façons de la déclencher :
+  - depuis GitHub, sans Git : onglet **Actions** → **Publier une version** → **Run workflow**, puis saisir le numéro (par exemple `v1.1.0`) ;
+  - depuis Git :
 
-  ```bash
-  git tag v1.0.0
-  git push origin v1.0.0
-  ```
+    ```bash
+    git tag v1.1.0
+    git push origin v1.1.0
+    ```
 
 - **GitHub Pages** (`.github/workflows/pages.yml`, facultatif) : publie la version un poste. Activation en deux temps :
   1. Settings → Pages → Build and deployment → Source : **GitHub Actions** ;

@@ -1,20 +1,46 @@
 name: Publier une version
 
-# Déclenché par un tag v1.0.0, v1.1.0… : teste, assemble et attache les fichiers
-# distribuables à une nouvelle version GitHub (onglet Releases).
+# Deux déclenchements :
+#  - depuis GitHub : onglet Actions → « Publier une version » → Run workflow, saisir le numéro (ex. v1.1.0) ;
+#  - depuis Git : git tag v1.1.0 && git push origin v1.1.0.
+# Le workflow teste, assemble et attache les fichiers distribuables à une nouvelle version (onglet Releases).
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Numéro de version à publier (format v1.2.3)'
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      VERSION: ${{ inputs.version || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v5
+      - name: Contrôle du numéro de version
+        run: |
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=Numéro de version invalide::« $VERSION » ne respecte pas le format v1.2.3"
+            exit 1
+          fi
+          if gh release view "$VERSION" > /dev/null 2>&1; then
+            echo "::error title=Version existante::La version $VERSION existe déjà. Choisissez un autre numéro."
+            exit 1
+          fi
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
@@ -26,20 +52,19 @@ jobs:
           npm test
           npm run test:ui
           npm run test:net
-      - name: Numéro de version tiré du tag
-        run: npm pkg set version="${GITHUB_REF_NAME#v}"
+      - name: Numéro de version dans le paquet
+        run: npm pkg set version="${VERSION#v}"
       - name: Assemblage des fichiers distribuables
         run: |
           node scripts/package.mjs
           cd release
-          zip -r "../forge-multiposte-${GITHUB_REF_NAME}.zip" forge-multiposte
-          cp forge-un-poste.html "../forge-un-poste-${GITHUB_REF_NAME}.html"
+          zip -r "../forge-multiposte-${VERSION}.zip" forge-multiposte
+          cp forge-un-poste.html "../forge-un-poste-${VERSION}.html"
       - name: Création de la version GitHub
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "forge-multiposte-${GITHUB_REF_NAME}.zip" \
-            "forge-un-poste-${GITHUB_REF_NAME}.html" \
-            --title "Forge ${GITHUB_REF_NAME}" \
+          gh release create "$VERSION" \
+            "forge-multiposte-${VERSION}.zip" \
+            "forge-un-poste-${VERSION}.html" \
+            --target "$GITHUB_SHA" \
+            --title "Forge ${VERSION}" \
             --notes-file .github/release-notes.md
