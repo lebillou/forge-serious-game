@@ -154,9 +154,15 @@ textarea { width: 100%; border: 1px solid var(--line); border-radius: var(--r); 
 .seg-btn { border: 0; border-right: 1px solid var(--line); background: var(--panel); padding: 6px 12px; cursor: pointer; font-family: var(--f-mono); font-size: .88rem; }
 .seg-btn:last-child { border-right: 0; }
 .seg-btn.on { background: var(--ink); color: var(--panel); }
-.team-names { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 8px; margin-top: 14px; }
+.team-names { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 8px; margin-top: 14px; }
 .team-name-row { display: flex; align-items: center; gap: 8px; }
 .team-name-row input, .txt, select, .rename-grid input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: var(--r); padding: 7px 10px; background: var(--panel); }
+.team-names .team-name-row { flex-wrap: wrap; }
+.team-names .team-name-row input { flex: 1 1 7rem; }
+.team-name-row .ai-select { flex: 1.3 1 12rem; }
+.ai-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 8px; }
+.ai-name { flex: 0 1 9rem; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.ai-tag { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 4px; font-size: .66rem; font-weight: 700; letter-spacing: .06em; line-height: 1.5; vertical-align: middle; background: var(--info-soft); color: var(--info); font-family: var(--f-mono); }
 .toggles { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
 .toggle { display: inline-flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: .9rem; }
 .toggle input { margin-top: 3px; accent-color: var(--accent); }

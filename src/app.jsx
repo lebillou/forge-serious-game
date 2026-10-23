@@ -4,7 +4,7 @@ import * as C from './components.jsx';
 const { useState, useEffect, useMemo, useRef, useCallback, Fragment, SEGS, SEG_LABEL, CFG,
   NF, nf0, nf1, nf2, ok, n0, ke, eu, pc, sg, vpsF, shiftLabel, QL, clamp,
   Num, Field, Toggle, Modal, Chip, Dot, LineChart, Table, Kpi, Setup, TopBar, MarketPanel, RankingPanel, NewsPanel, TeacherTools, ResolveConfirm,
-  TeamConsole, Debrief, Rules, ResultDialog } = C;
+  TeamConsole, Debrief, Rules, ResultDialog, AiTag, aiLabel } = C;
 
 // ---------- persistance ----------
 const LS_KEY = 'forge.autosave.v1';
@@ -72,7 +72,7 @@ function Home({ hasAutosave, autosaveInfo, onNew, onResume, onLoad, onRules }) {
         <div className="home-mark">Forge</div>
         <p className="home-lede">Simulation de gestion industrielle en équipes. Chaque équipe dirige une usine de biens d'équipement face aux autres et à trois concurrents régionaux : prix, capacité, effectifs, achats, qualité, R&D, financement et croissance externe, trimestre après trimestre.</p>
         <div className="home-facts">
-          <span><b>2 à 6</b> équipes sur un même poste</span>
+          <span><b>2 à 6</b> entreprises sur un même poste, dont certaines pilotées par l'IA si besoin</span>
           <span><b>8 à 24</b> trimestres</span>
           <span><b>2</b> segments, Standard et Premium</span>
           <span>Débriefing automatique</span>
@@ -125,10 +125,10 @@ function Home({ hasAutosave, autosaveInfo, onNew, onResume, onLoad, onRules }) {
 
 
 // ---------- hub (écran projeté) ----------
-function Hub({ G, prevG, onOpenTeam, onResolve, onUndo, onInject, onFinish, onDebrief, onRename }) {
+function Hub({ G, prevG, onOpenTeam, onResolve, onUndo, onInject, onFinish, onDebrief, onRename, onSetAi }) {
   const [confirm, setConfirm] = useState(false);
   const submitted = G.submitted || {};
-  const pending = G.firms.filter((f) => !submitted[f.id]);
+  const pending = G.firms.filter((f) => !E.isAi(f) && !submitted[f.id]);
   const finished = G.phase === 'finished';
   return (
     <div className="hub">
@@ -141,11 +141,11 @@ function Hub({ G, prevG, onOpenTeam, onResolve, onUndo, onInject, onFinish, onDe
             </div>
             <div className="andon">
               {G.firms.map((f) => (
-                <div key={f.id} className={'andon-row' + (submitted[f.id] ? ' done' : '')}>
+                <div key={f.id} className={'andon-row' + (submitted[f.id] || E.isAi(f) ? ' done' : '')}>
                   <span className="andon-lamp" style={{ '--team': f.color }} />
-                  <span className="andon-name">{f.name}</span>
-                  <span className="andon-state">{submitted[f.id] ? 'Validé' : (G.decisions?.[f.id] ? 'Brouillon' : 'En attente')}</span>
-                  <button className="btn btn-sm" onClick={() => onOpenTeam(f.id)}>Ouvrir la console</button>
+                  <span className="andon-name">{f.name}<AiTag ai={f.ai} /></span>
+                  <span className="andon-state">{E.isAi(f) ? aiLabel(f.ai) : submitted[f.id] ? 'Validé' : (G.decisions?.[f.id] ? 'Brouillon' : 'En attente')}</span>
+                  <button className="btn btn-sm" onClick={() => onOpenTeam(f.id)}>{E.isAi(f) ? 'Voir la console' : 'Ouvrir la console'}</button>
                 </div>
               ))}
             </div>
@@ -165,7 +165,7 @@ function Hub({ G, prevG, onOpenTeam, onResolve, onUndo, onInject, onFinish, onDe
           </div>
         )}
         <MarketPanel G={G} />
-        <TeacherTools G={G} onInject={onInject} onRename={onRename} onFinish={onFinish} />
+        <TeacherTools G={G} onInject={onInject} onRename={onRename} onFinish={onFinish} onSetAi={onSetAi} />
       </section>
       <aside className="hub-side">
         <RankingPanel G={G} />
@@ -184,7 +184,8 @@ function Gate({ firm, onReveal, onBack, submitted }) {
         <div className="gate-eyebrow">Console confidentielle</div>
         <div className="gate-name">{firm.name}</div>
         <p>Les données qui suivent ne concernent que cette équipe. Les autres équipes s'éloignent de l'écran.</p>
-        {submitted && <p className="gate-ok">Décisions déjà validées pour ce trimestre. Vous pouvez les consulter ou les modifier.</p>}
+        {E.isAi(firm) ? <p className="gate-ok">Entreprise pilotée par l'IA (profil {E.AI_PROFILES[firm.ai].label}) : console en lecture seule.</p>
+          : submitted && <p className="gate-ok">Décisions déjà validées pour ce trimestre. Vous pouvez les consulter ou les modifier.</p>}
         <div className="row">
           <button className="btn btn-primary btn-lg" onClick={onReveal}>Afficher la console</button>
           <button className="btn btn-ghost" onClick={onBack}>Retour</button>
@@ -253,6 +254,11 @@ function App({ initial }) {
   const undo = () => { if (!prevG) return; setG(prevG); setPrevG(null); setToast('Dernière résolution annulée : les décisions saisies sont restaurées.'); };
   const inject = (id) => { setG((g) => E.injectEvent(g, id)); setToast(`${E.GLOBAL_EVENTS[id].label} programmé pour le prochain trimestre.`); };
   const finish = () => { setG((g) => ({ ...g, phase: 'finished' })); setScreen('debrief'); };
+  const setAi = (fid, profile) => {
+    const f = G.firms.find((x) => x.id === fid);
+    setG((g) => E.setAi(g, fid, profile));
+    setToast(profile ? `${f.name} est confiée à l'IA (profil ${E.AI_PROFILES[profile].label}) à partir de ce trimestre.` : `${f.name} est rendue à son équipe.`);
+  };
   const rename = (fid, name) => { const nm = String(name || '').trim(); if (!nm) return; setG((g) => ({ ...g, firms: g.firms.map((f) => (f.id === fid ? { ...f, name: nm.slice(0, 24) } : f)) })); };
   const loadGame = (g) => { if (!g.submitted) g.submitted = {}; setG(g); setPrevG(null); setScreen(g.phase === 'finished' ? 'debrief' : 'hub'); setToast('Partie chargée'); };
   const showRules = () => { setRulesFrom(screen === 'rules' ? rulesFrom : screen); setScreen('rules'); };
@@ -268,17 +274,21 @@ function App({ initial }) {
     body = <Rules onBack={() => setScreen(rulesFrom === 'rules' ? (G ? 'hub' : 'home') : (rulesFrom === 'team' && !team ? 'hub' : rulesFrom))} />;
   } else if (screen === 'team' && team) {
     const f = G.firms.find((x) => x.id === team);
-    body = revealed
+    const close = () => { setScreen(G.phase === 'finished' && rulesFrom === 'debrief' ? 'debrief' : 'hub'); setTeam(null); setRevealed(false); };
+    body = revealed && E.isAi(f)
+      ? <TeamConsole G={G} firmId={team} subtitle={`Pilotée par l'IA · profil ${E.AI_PROFILES[f.ai].label} · lecture seule`}
+          actions={<button className="btn btn-ghost" onClick={close}>Fermer</button>} />
+      : revealed
       ? <TeamConsole G={G} firmId={team} draft={G.decisions?.[team]} submitted={!!(G.submitted || {})[team]} onDraft={(nd) => draft(team, nd)}
           actions={<>
             {G.phase !== 'finished' && <button className="btn btn-primary" onClick={() => validate(team, G.decisions?.[team] || E.defaultDecisions(G, f))}>{(G.submitted || {})[team] ? 'Décisions validées · masquer' : 'Valider et masquer'}</button>}
-            <button className="btn btn-ghost" onClick={() => { setScreen(G.phase === 'finished' && rulesFrom === 'debrief' ? 'debrief' : 'hub'); setTeam(null); setRevealed(false); }}>{G.phase === 'finished' ? 'Fermer' : 'Masquer sans valider'}</button>
+            <button className="btn btn-ghost" onClick={close}>{G.phase === 'finished' ? 'Fermer' : 'Masquer sans valider'}</button>
           </>} />
       : <Gate firm={f} submitted={!!(G.submitted || {})[team]} onReveal={() => setRevealed(true)} onBack={() => { setScreen('hub'); setTeam(null); }} />;
   } else if (screen === 'debrief') {
     body = <Debrief G={G} onBack={() => setScreen('hub')} onOpenTeam={(id) => { setRulesFrom('debrief'); openTeam(id); }} />;
   } else {
-    body = <Hub G={G} prevG={prevG} onOpenTeam={openTeam} onResolve={resolve} onUndo={undo} onInject={inject} onFinish={finish} onDebrief={() => setScreen('debrief')} onRename={rename} />;
+    body = <Hub G={G} prevG={prevG} onOpenTeam={openTeam} onResolve={resolve} onUndo={undo} onInject={inject} onFinish={finish} onDebrief={() => setScreen('debrief')} onRename={rename} onSetAi={setAi} />;
   }
   const teamOpen = screen === 'team' && revealed;
   return (

@@ -95,6 +95,47 @@ setter.call(ta, code); ta.dispatchEvent(new window.Event('input', { bubbles: tru
 await click($$('button').find((b) => b.textContent === 'Charger'), 'charger');
 if (!document.body.textContent.includes('Distinctions')) throw new Error('import KO');
 step('import du code de sauvegarde');
+
+// partie avec une entreprise pilotée par l'IA
+const choose = async (sel, val) => {
+  const el = $(sel); if (!el) throw new Error('liste introuvable ' + sel);
+  el.value = val; el.dispatchEvent(new window.Event('change', { bubbles: true })); await flush();
+};
+await click(btn('Accueil'), 'accueil');
+await click(btn('Nouvelle partie'), 'nouvelle partie IA');
+await click($$('.seg-btn').find((b) => b.textContent === '3'), '3 équipes');
+await click($$('.seg-btn').find((b) => b.textContent === '8 trim.'), '8 trimestres');
+await choose('#team-ai-2', 'premium');
+if (!document.body.textContent.includes('Montée en gamme')) throw new Error('description du profil absente');
+await click(btn('Lancer la partie'), 'lancer IA');
+if (!$$('.andon-row')[2].textContent.includes('IA · Premium')) throw new Error('entreprise IA non signalée');
+if (!document.body.textContent.includes('2 / 3 validées') && !document.body.textContent.includes('1 / 3 validées')) throw new Error('compteur IA');
+await click($$('.andon-row')[2].querySelector('button'), 'console IA');
+await click(btn('Afficher la console'), 'afficher IA');
+if ($$('.tab').some((b) => b.textContent === 'Décisions')) throw new Error('console IA modifiable');
+await click(btn('Fermer'), 'fermer IA');
+for (const i of [0, 1]) {
+  await click($$('.andon-row')[i].querySelector('button'), 'console');
+  await click(btn('Afficher la console'), 'afficher');
+  await click(btn('Valider et masquer'), 'valider');
+}
+if (!document.body.textContent.includes('3 / 3 validées')) throw new Error('IA non comptée comme validée');
+await click(btn('Résoudre le trimestre'), 'résoudre IA'); // aucune confirmation : seules les équipes humaines comptent
+if (!document.body.textContent.includes('résolu')) throw new Error('résolution avec IA');
+await click(btn('Continuer'), 'continuer');
+if (!$$('.ai-tag').length) throw new Error('mention IA absente du classement');
+// l'animateur confie une équipe absente à l'IA
+await choose('#pilot-e2', 'passive');
+if (!$$('.andon-row')[1].textContent.includes('IA · Prudente')) throw new Error('bascule vers l’IA');
+await click($$('.andon-row')[0].querySelector('button'), 'console');
+await click(btn('Afficher la console'), 'afficher');
+await click(btn('Valider et masquer'), 'valider');
+await click(btn('Résoudre le trimestre'), 'résoudre après bascule');
+if (!document.body.textContent.includes('résolu')) throw new Error('résolution après bascule');
+await click(btn('Continuer'), 'continuer');
+await choose('#pilot-e2', '');
+if ($$('.andon-row')[1].textContent.includes('IA')) throw new Error('retour à l’équipe');
+step('entreprises pilotées par l’IA');
 const G = JSON.parse(code).game;
 console.log = origErr;
 console.log(`Partie : ${G.firms.map((f) => `${f.name} TSR ${(f.tsr * 100).toFixed(0)}% acq [${f.acquisitions.map((a) => a.name)}] lignes ${f.lines.length} cert ${f.cert.status}`).join(' | ')}`);

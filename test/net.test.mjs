@@ -174,6 +174,29 @@ try {
   await until(() => T1.text().includes('n’est plus valable'), 'équipe déconnectée après import');
   log('export / import (codes régénérés, anciennes sessions invalidées)');
 
+  // ----- entreprises pilotées par l'IA -----
+  r = await call('/api/admin/new', { method: 'POST', code: ADMIN, body: { teams: ['Rouge', 'Robot'], ai: [null, 'costLeader'], nQuarters: 4, seed: 3 } });
+  assert.equal(r.status, 200);
+  const adm3 = (await call('/api/view', { code: ADMIN })).data;
+  const [h, bot] = adm3.G.firms.map((f) => f.id);
+  assert.equal(adm3.G.firms[1].ai, 'costLeader');
+  const hv = (await call('/api/view', { code: adm3.codes[h] })).data;
+  assert.equal(hv.G.firms.find((f) => f.id === bot).ai, 'costLeader', 'mention IA visible des équipes');
+  assert.equal((await call('/api/decisions', { method: 'PUT', code: adm3.codes[bot], body: { q: 1, decisions: {} } })).status, 409);
+  assert.equal((await call('/api/admin/ai', { method: 'POST', code: ADMIN, body: { id: h, profile: 'inexistant' } })).status, 400);
+  assert.equal((await call('/api/admin/ai', { method: 'POST', code: adm3.codes[h], body: { id: h, profile: 'premium' } })).status, 403);
+  assert.equal((await call('/api/decisions', { method: 'PUT', code: adm3.codes[h], body: { q: 1, decisions: {}, submit: true } })).status, 200);
+  assert.equal((await call('/api/admin/ai', { method: 'POST', code: ADMIN, body: { id: h, profile: 'premium' } })).status, 200);
+  let adm4 = (await call('/api/view', { code: ADMIN })).data;
+  assert.equal(adm4.G.firms[0].ai, 'premium'); assert.equal(adm4.G.submitted[h], false); assert.equal(adm4.G.decisions[h], undefined);
+  assert.equal((await call('/api/decisions', { method: 'PUT', code: adm3.codes[h], body: { q: 1, decisions: {} } })).status, 409);
+  assert.equal((await call('/api/admin/resolve', { method: 'POST', code: ADMIN, body: { t: 0 } })).status, 200);
+  adm4 = (await call('/api/view', { code: ADMIN })).data;
+  assert.equal(adm4.G.t, 1); assert.equal(adm4.G.firms[0].lastDec.price.P, 2.85, 'décisions du profil Premium appliquées');
+  assert.equal((await call('/api/admin/ai', { method: 'POST', code: ADMIN, body: { id: h, profile: null } })).status, 200);
+  assert.equal((await call('/api/decisions', { method: 'PUT', code: adm3.codes[h], body: { q: 2, decisions: {} } })).status, 200);
+  log('entreprises pilotées par l’IA (création, refus des saisies, bascule, résolution)');
+
   for (const b of [A, T1, T2]) b.check();
   log('aucune erreur ni avertissement React sur les trois postes');
   for (const b of [A, T1, T2]) b.close();

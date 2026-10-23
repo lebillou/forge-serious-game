@@ -161,7 +161,7 @@ export function newGame(opts = {}) {
     t: 0, phase: 'decisions',
     macro: { kitIndex: 100, kitSmooth: 100, energyIndex: 100, baseRate: 3.5, salaryBase: CFG.salaryBase, cyclePhase: 0, effects: [] },
     norm: { status: 'none', at: null },
-    firms: names.map((n, i) => newTeam(`e${i + 1}`, n, TEAM_COLORS[i])),
+    firms: names.map((n, i) => ({ ...newTeam(`e${i + 1}`, n, TEAM_COLORS[i]), ai: aiOk(opts.ai?.[i]) ? opts.ai[i] : null })),
     npcs: NPC_SPECS.map((s) => newNpc(JSON.parse(JSON.stringify(s)))),
     targets: [
       { id: 'durand', type: 'competitor', name: 'Ateliers Durand', from: 3, status: 'hidden', owner: null },
@@ -201,7 +201,8 @@ export function newGame(opts = {}) {
     n.revHist = [rev, rev, rev, rev];
   }
   for (const f of G.firms) { valuate(G, f); f.vps0 = f.vps; f.tsr = 0; }
-  G.news.push({ t: 0, kind: 'info', text: `Ouverture du marché : ${names.length} équipes, ${G.settings.nQuarters} trimestres, scénario ${SCENARIOS[G.settings.scenario].label}.` });
+  const nAi = G.firms.filter(isAi).length;
+  G.news.push({ t: 0, kind: 'info', text: `Ouverture du marché : ${names.length} équipes${nAi ? ` dont ${nAi} pilotée${nAi > 1 ? 's' : ''} par l'IA` : ''}, ${G.settings.nQuarters} trimestres, scénario ${SCENARIOS[G.settings.scenario].label}.` });
   return G;
 }
 
@@ -432,6 +433,137 @@ function quitRate(climate, salaryIndex) {
   return 0.02 + 0.12 * Math.max(0, (55 - climate) / 55) + 0.5 * Math.max(0, 1 - salaryIndex);
 }
 
+// ---------- entreprises pilotées par l'IA ----------
+// Stratégies déterministes (aucun tirage aléatoire) : la partie reste reproductible à graine fixée.
+// Les niveaux reflètent le classement moyen obtenu par « npm run tournoi ».
+export function aiPlanOps(G, f, d, allowFire = false) {
+  const pv = preview(G, f, d);
+  const avail = f.operators - pv.quitsEst;
+  const gap = pv.needed - avail;
+  d.hire = Math.max(0, Math.min(pv.maxHires, Math.ceil(gap)));
+  d.fire = allowFire && gap < -6 ? Math.floor(-gap - 3) : 0;
+  return d;
+}
+
+export function aiProduction(G, f, d, cover = 1.08) {
+  const fc = forecastDemand(G, f);
+  d.production = { S: Math.max(0, Math.round(fc.S * cover - f.inv.S)), P: Math.max(0, Math.round(fc.P * cover - f.inv.P)) };
+  const need = kitsOf(d.production);
+  d.kitsOrder = Math.max(0, Math.round(need * 1.12 - f.kits + 1500));
+  return d;
+}
+
+export const AI_PROFILES = {
+  passive: {
+    label: 'Prudente', level: 'Débutant',
+    desc: 'Reconduit ses décisions et recale la production sur la demande. N\'investit pas : une cible facile.',
+    decide(G, f) { return defaultDecisions(G, f); },
+  },
+  costLeader: {
+    label: 'Low-cost', level: 'Intermédiaire',
+    desc: 'Prix bas, R&D procédé, 2×8 permanent. Pèse sur les prix du Standard ; s\'endette parfois trop.',
+    decide(G, f) {
+      const d = defaultDecisions(G, f);
+      d.price = { S: 0.95, P: 2.55 };
+      d.marketing = { S: 220, P: 140 };
+      d.rd = { S: 60, P: 130, process: 400 };
+      aiProduction(G, f, d, 1.04);
+      d.shifts = 2;
+      const pv = preview(G, f, d);
+      if (pv.loadPct > 0.98 && G.t < G.settings.nQuarters - 6 && f.pending.length === 0 && pv.loanCap + f.cash > CFG.lineCost + 1500) {
+        d.linesBuy = 1; d.loan = Math.max(0, CFG.lineCost - Math.max(0, f.cash - 2500));
+      }
+      d.maintenance = 60 * (f.lines.length + f.pending.length);
+      d.training = 0.55 * f.operators;
+      d.quality = Math.max(80, 0.013 * eqOf(d.production));
+      if (G.t === 3) d.cert = true;
+      if (G.tender && G.tender.status === 'open') d.tenderBid = Math.round(G.tender.maxPrice * 0.92 * 100) / 100;
+      if (f.cash > 7000 && f.surveillance === 0) d.dividend = Math.round((f.cash - 6000) * 0.5);
+      return aiPlanOps(G, f, d, false);
+    },
+  },
+  balanced: {
+    label: 'Équilibrée', level: 'Confirmé',
+    desc: 'Gestion saine sur les deux segments : capacité suivant la charge, maintenance, formation, certification, dividendes.',
+    decide(G, f) {
+      const d = defaultDecisions(G, f);
+      aiProduction(G, f, d);
+      const pv = preview(G, f, d);
+      if (pv.loadPct > 0.97 && G.t < G.settings.nQuarters - 6) {
+        if (pv.loanCap + f.cash > CFG.lineCost + 1500) { d.linesBuy = 1; d.loan = Math.max(0, CFG.lineCost - Math.max(0, f.cash - 2000)); }
+      }
+      d.maintenance = 55 * (f.lines.length + f.pending.length);
+      d.training = 0.55 * f.operators;
+      d.quality = Math.max(80, 0.014 * eqOf(d.production));
+      d.rd = { S: 120, P: 250, process: 150 };
+      if (G.t === 2) d.cert = true;
+      if (G.tender && G.tender.status === 'open') d.tenderBid = Math.round(G.tender.maxPrice * 0.95 * 100) / 100;
+      if (f.cash > 6000 && f.surveillance === 0) d.dividend = Math.round((f.cash - 5000) * 0.5);
+      return aiPlanOps(G, f, d);
+    },
+  },
+  premium: {
+    label: 'Premium', level: 'Expert',
+    desc: 'Montée en gamme : R&D produit, fournisseurs haut de gamme, certification immédiate, prix élevés. La stratégie la plus performante des tournois.',
+    decide(G, f) {
+      const d = defaultDecisions(G, f);
+      d.price = { S: 1.0, P: 2.85 };
+      d.marketing = { S: 150, P: 380 };
+      d.rd = { S: 60, P: 500, process: 100 };
+      d.supplier = { A: 0, B: 40, C: 60 };
+      aiProduction(G, f, d);
+      if (G.t === 0) d.cert = true;
+      d.quality = Math.max(120, 0.02 * eqOf(d.production));
+      d.training = 0.8 * f.operators;
+      d.maintenance = 70 * f.lines.length;
+      const pv = preview(G, f, d);
+      if (pv.loadPct > 0.97 && G.t < G.settings.nQuarters - 6 && pv.loanCap > CFG.lineCost) { d.linesBuy = 1; d.loan = CFG.lineCost; }
+      return aiPlanOps(G, f, d);
+    },
+  },
+  aggressive: {
+    label: 'Conquérante', level: 'Perturbateur',
+    desc: 'Croissance à crédit : prix cassés, marketing massif, 3×8, rachats de concurrents. Déstabilise le marché et finit souvent surendettée.',
+    decide(G, f) {
+      const d = defaultDecisions(G, f);
+      d.price = { S: 0.93, P: 2.45 };
+      d.marketing = { S: 450, P: 450 };
+      aiProduction(G, f, d, 1.15);
+      d.shifts = 3;
+      if (G.t < G.settings.nQuarters - 6 && f.lines.length + f.pending.length < 8) {
+        const cap = loanCapacity(f);
+        if (cap > CFG.lineCost) { d.linesBuy = 1; d.loan = CFG.lineCost; }
+      }
+      d.maintenance = 60 * f.lines.length;
+      d.training = 0.5 * f.operators;
+      d.quality = 0.012 * eqOf(d.production);
+      if (G.settings.ma) {
+        const tg = G.targets.find((t) => t.status === 'open' && t.type === 'competitor');
+        if (tg) { const ask = targetAsk(G, tg); d.loan = Math.max(d.loan, ask); d.acqBid = { targetId: tg.id, price: ask * 1.05 }; d.linesBuy = 0; }
+      }
+      if (G.tender && G.tender.status === 'open') d.tenderBid = Math.round(G.tender.maxPrice * 0.88 * 100) / 100;
+      return aiPlanOps(G, f, d);
+    },
+  },
+};
+const aiOk = (p) => !!p && Object.prototype.hasOwnProperty.call(AI_PROFILES, p);
+export const isAi = (f) => !!f && aiOk(f.ai);
+
+// Décisions que l'IA prendrait pour cette entreprise au trimestre en cours (null si pilotée par une équipe).
+export function aiDecisions(G, f) { return isAi(f) ? AI_PROFILES[f.ai].decide(G, f) : null; }
+
+// Confie une entreprise à l'IA (profil) ou la rend à son équipe (null). Effet dès la prochaine résolution.
+export function setAi(G, fid, profile) {
+  const p = aiOk(profile) ? profile : null;
+  const N = deepClone(G);
+  const f = N.firms.find((x) => x.id === fid);
+  if (!f || (f.ai || null) === p) return G;
+  f.ai = p;
+  if (N.decisions) delete N.decisions[fid];
+  if (N.submitted) N.submitted = { ...N.submitted, [fid]: false };
+  return N;
+}
+
 // ---------- résolution d'un trimestre ----------
 export function resolveQuarter(G0, decisionsIn = {}) {
   if (G0.phase === 'finished') throw new Error('La partie est terminée.');
@@ -440,7 +572,7 @@ export function resolveQuarter(G0, decisionsIn = {}) {
   const scen = SCENARIOS[G.settings.scenario];
   const news = [];
   const dec = {};
-  for (const f of G.firms) dec[f.id] = sanitize(G, f, decisionsIn[f.id] || G.decisions?.[f.id]);
+  for (const f of G.firms) dec[f.id] = sanitize(G, f, isAi(f) ? aiDecisions(G, f) : (decisionsIn[f.id] || G.decisions?.[f.id]));
   const R = {};
   for (const f of G.firms) R[f.id] = { events: [], pnl: {}, cf: {}, ops: {}, mkt: {}, fin: {}, hr: {}, quality: {}, notes: [] };
 
@@ -1104,7 +1236,7 @@ function diagnose(G, f, r, mkt, d) {
 
 // ---------- classement et débriefing ----------
 export function ranking(G) {
-  return [...G.firms].sort((a, b) => b.tsr - a.tsr).map((f, i) => ({ rank: i + 1, id: f.id, name: f.name, color: f.color, tsr: f.tsr, vps: f.vps,
+  return [...G.firms].sort((a, b) => b.tsr - a.tsr).map((f, i) => ({ rank: i + 1, id: f.id, name: f.name, color: f.color, ai: f.ai || null, tsr: f.tsr, vps: f.vps,
     revenue: f.revHist[f.revHist.length - 1], ni: f.report?.pnl?.ni ?? null, cumDivPS: f.cumDivPS, rating: f.rating }));
 }
 
@@ -1115,7 +1247,7 @@ export function finalDebrief(G) {
     const avg = (k) => sum(H.map((h) => h[k] ?? 0)) / n;
     const last = H[H.length - 1] || {};
     return {
-      id: f.id, name: f.name, color: f.color, tsr: f.tsr, vps: f.vps, vps0: f.vps0, cumDivPS: f.cumDivPS,
+      id: f.id, name: f.name, color: f.color, ai: f.ai || null, tsr: f.tsr, vps: f.vps, vps0: f.vps0, cumDivPS: f.cumDivPS,
       revenueTot: sum(H.map((h) => h.revenue)), niTot: sum(H.map((h) => h.ni)), ebitTot: sum(H.map((h) => h.ebit)),
       avgMargin: avg('margin'), avgRoce: avg('roce'), avgTrs: avg('trs'), avgUtil: avg('util'), avgFill: avg('fill'), avgEsc: avg('escRate'),
       lastRep: last.rep, lastClimate: last.climate, lastTechP: last.techP, lastTechS: last.techS, lastShareS: last.shareS, lastShareP: last.shareP,
@@ -1176,5 +1308,6 @@ export function importSave(text) {
   const G = o && o.app === 'forge' ? o.game : o;
   if (!G || !Array.isArray(G.firms) || !G.settings || typeof G.t !== 'number') throw new Error('Fichier de sauvegarde invalide.');
   if (G.version !== VERSION) throw new Error(`Version de sauvegarde incompatible (${G.version}).`);
+  for (const f of G.firms) if (f.ai != null && !aiOk(f.ai)) f.ai = null;
   return G;
 }

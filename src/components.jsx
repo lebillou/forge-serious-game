@@ -82,6 +82,19 @@ export function Modal({ title, children, onClose, actions }) {
 
 export function Chip({ kind = 'neutral', children }) { return <span className={'chip chip-' + kind}>{children}</span>; }
 export function Dot({ color }) { return <span className="dot" style={{ background: color }} />; }
+export function AiTag({ ai }) {
+  const p = ai && E.AI_PROFILES[ai];
+  return p ? <span className="ai-tag" title={`Pilotée par l'IA · profil ${p.label} (${p.level.toLowerCase()})`}>IA</span> : null;
+}
+export const aiLabel = (ai) => { const p = ai && E.AI_PROFILES[ai]; return p ? `IA · ${p.label}` : ''; };
+export function AiSelect({ id, value, onChange }) {
+  return (
+    <select id={id} className="ai-select" value={value || ''} onChange={(e) => onChange(e.target.value || null)}>
+      <option value="">Équipe humaine</option>
+      {Object.entries(E.AI_PROFILES).map(([k, p]) => <option key={k} value={k}>IA · {p.label} ({p.level.toLowerCase()})</option>)}
+    </select>
+  );
+}
 
 export function niceTicks(lo, hi, count = 4) {
   const span = hi - lo; const raw = span / count;
@@ -157,9 +170,12 @@ export function Kpi({ label, value, sub, tone }) {
 }
 
 // ---------- paramétrage ----------
+const aiProfiles = (list) => [...new Set(list.filter(Boolean))].map((k) => [k, E.AI_PROFILES[k]]);
+
 export function Setup({ onStart, onCancel }) {
   const [n, setN] = useState(4);
   const [names, setNames] = useState(['Aubisque', 'Tourmalet', 'Soulor', 'Peyresourde', 'Aspin', 'Marie-Blanque']);
+  const [ai, setAi] = useState([null, null, null, null, null, null]);
   const [nQ, setNQ] = useState(20);
   const [scenario, setScenario] = useState('standard');
   const [events, setEvents] = useState(true);
@@ -179,9 +195,12 @@ export function Setup({ onStart, onCancel }) {
             <div key={i} className="team-name-row">
               <Dot color={E.TEAM_COLORS[i]} />
               <input id={`team-${i}`} value={nm} maxLength={24} onChange={(e) => { const c = [...names]; c[i] = e.target.value; setNames(c); }} />
+              <AiSelect id={`team-ai-${i}`} value={ai[i]} onChange={(v) => { const c = [...ai]; c[i] = v; setAi(c); }} />
             </div>
           ))}
         </div>
+        <div className="hint">Une entreprise confiée à l'IA décide seule à chaque trimestre et concourt au classement comme les autres. Profils : {Object.values(E.AI_PROFILES).map((p) => `${p.label} (${p.level.toLowerCase()})`).join(', ')}. L'animateur peut changer de pilote en cours de partie.</div>
+        {aiProfiles(ai.slice(0, n)).map(([k, p]) => <div key={k} className="hint"><b>{p.label}</b> : {p.desc}</div>)}
       </div>
       <div className="panel">
         <h2>Format</h2>
@@ -201,7 +220,7 @@ export function Setup({ onStart, onCancel }) {
         </Field>
       </div>
       <div className="row-end">
-        <button className="btn btn-primary" onClick={() => onStart({ teams: names.slice(0, n), nQuarters: nQ, scenario, events, tenders, ma, seed: seed ? Number(seed) : undefined })}>Lancer la partie</button>
+        <button className="btn btn-primary" onClick={() => onStart({ teams: names.slice(0, n), ai: ai.slice(0, n), nQuarters: nQ, scenario, events, tenders, ma, seed: seed ? Number(seed) : undefined })}>Lancer la partie</button>
       </div>
     </div>
   );
@@ -281,7 +300,7 @@ export function RankingPanel({ G }) {
     <div className="panel">
       <div className="panel-head"><h2>Classement</h2><span className="muted">rentabilité pour l'actionnaire</span></div>
       <Table head={['Équipe', 'Cours', 'TSR', 'CA trim.', 'Notation']} rows={rank.map((r) => ({
-        cells: [<span className="team-cell"><b className="rank">{r.rank}</b><Dot color={r.color} />{r.name}</span>, vpsF(r.vps), <span className={r.tsr >= 0 ? 'pos' : 'neg'}>{sg(r.tsr, (x) => pc(x, 0))}</span>, ke(r.revenue), r.rating],
+        cells: [<span className="team-cell"><b className="rank">{r.rank}</b><Dot color={r.color} />{r.name}<AiTag ai={r.ai} /></span>, vpsF(r.vps), <span className={r.tsr >= 0 ? 'pos' : 'neg'}>{sg(r.tsr, (x) => pc(x, 0))}</span>, ke(r.revenue), r.rating],
       }))} />
       <div className="hint">TSR : variation du cours depuis le départ, dividendes cumulés inclus.</div>
     </div>
@@ -303,7 +322,7 @@ export function NewsPanel({ G }) {
   );
 }
 
-export function TeacherTools({ G, onInject, onRename, onFinish, children }) {
+export function TeacherTools({ G, onInject, onRename, onFinish, onSetAi, children }) {
   const [showTeacher, setShowTeacher] = useState(false);
   const [ev, setEv] = useState('mp');
   const [finishAsk, setFinishAsk] = useState(false);
@@ -323,6 +342,20 @@ export function TeacherTools({ G, onInject, onRename, onFinish, children }) {
               <button className="btn btn-sm" onClick={() => onInject(ev)}>Programmer</button>
             </div>
             {G.injected && G.injected.length > 0 && <div className="hint">Programmé : {G.injected.map((k) => E.GLOBAL_EVENTS[k].label).join(', ')}. Il remplace le tirage aléatoire du trimestre.</div>}
+          </div>
+        )}
+        {!finished && onSetAi && (
+          <div className="teacher-row">
+            <label>Pilotage des entreprises</label>
+            <div className="ai-grid">
+              {G.firms.map((f) => (
+                <div key={f.id} className="team-name-row">
+                  <Dot color={f.color} /><span className="ai-name">{f.name}</span>
+                  <AiSelect id={`pilot-${f.id}`} value={f.ai} onChange={(v) => onSetAi(f.id, v)} />
+                </div>
+              ))}
+            </div>
+            <div className="hint">Confier une entreprise à l'IA (équipe absente, effectif insuffisant, difficulté accrue) ou la rendre à son équipe. Le changement s'applique à la prochaine résolution ; le brouillon de l'équipe est abandonné.</div>
           </div>
         )}
         <div className="teacher-row">
@@ -370,7 +403,7 @@ export function TeacherTable({ G }) {
   return (
     <Table head={['Équipe', 'Trésorerie', 'Dette', 'EBIT trim.', 'TRS', 'Service', 'Réputation', 'Climat', 'Tech. S/P', 'Lignes']} rows={G.firms.map((f) => {
       const h = f.history[f.history.length - 1];
-      return { cells: [<span className="team-cell"><Dot color={f.color} />{f.name}</span>, ke(f.cash - f.overdraft), ke(f.debt), h ? ke(h.ebit) : '—', h ? pc(h.trs) : '—', h ? pc(h.fill) : '—', n0(f.reputation), n0(f.climate), `${n0(f.tech.S)} / ${n0(f.tech.P)}`, `${f.lines.length} · ${shiftLabel(f.shifts)}`] };
+      return { cells: [<span className="team-cell"><Dot color={f.color} />{f.name}<AiTag ai={f.ai} /></span>, ke(f.cash - f.overdraft), ke(f.debt), h ? ke(h.ebit) : '—', h ? pc(h.trs) : '—', h ? pc(h.fill) : '—', n0(f.reputation), n0(f.climate), `${n0(f.tech.S)} / ${n0(f.tech.P)}`, `${f.lines.length} · ${shiftLabel(f.shifts)}`] };
     })} />
   );
 }
@@ -939,7 +972,7 @@ export function Debrief({ G, onBack, onOpenTeam }) {
         {D.teams.map((t, i) => (
           <div key={t.id} className={'podium-card' + (i === 0 ? ' first' : '')} style={{ '--team': t.color }}>
             <div className="podium-rank">{i + 1}</div>
-            <div className="podium-name">{t.name}</div>
+            <div className="podium-name">{t.name}<AiTag ai={t.ai} /></div>
             <div className="podium-tsr">{sg(t.tsr, (x) => pc(x, 0))}</div>
             <div className="muted">cours {vpsF(t.vps0)} → {vpsF(t.vps)}{t.cumDivPS > 0 ? ` · dividendes ${vpsF(t.cumDivPS)}` : ''}</div>
             {onOpenTeam && <button className="btn btn-sm" onClick={() => onOpenTeam(t.id)}>Comptes détaillés</button>}
@@ -959,7 +992,7 @@ export function Debrief({ G, onBack, onOpenTeam }) {
       <div className="panel">
         <h2>Tableau comparatif</h2>
         <Table head={['Équipe', 'TSR', 'CA cumulé', 'Résultat net cumulé', 'Marge moy.', 'ROCE moy.', 'TRS moy.', 'Service moy.', 'Défauts livrés', 'Réput.', 'Climat', 'Levier final', 'R&D cumulée', 'Invest. cumulés', 'Acquisitions']}
-          rows={D.teams.map((t) => ({ cells: [<span className="team-cell"><Dot color={t.color} />{t.name}</span>, sg(t.tsr, (x) => pc(x, 0)), ke(t.revenueTot), ke(t.niTot), pc(t.avgMargin), pc(t.avgRoce), pc(t.avgTrs), pc(t.avgFill), pc(t.avgEsc, 2), n0(t.lastRep), n0(t.lastClimate), t.lastLev != null ? `${nf1.format(t.lastLev)} ×` : '—', ke(t.cum.rd), ke(t.cum.capex + t.cum.acquisitions), t.acquisitions.join(', ') || '—'] }))} />
+          rows={D.teams.map((t) => ({ cells: [<span className="team-cell"><Dot color={t.color} />{t.name}<AiTag ai={t.ai} /></span>, sg(t.tsr, (x) => pc(x, 0)), ke(t.revenueTot), ke(t.niTot), pc(t.avgMargin), pc(t.avgRoce), pc(t.avgTrs), pc(t.avgFill), pc(t.avgEsc, 2), n0(t.lastRep), n0(t.lastClimate), t.lastLev != null ? `${nf1.format(t.lastLev)} ×` : '—', ke(t.cum.rd), ke(t.cum.capex + t.cum.acquisitions), t.acquisitions.join(', ') || '—'] }))} />
       </div>
       <div className="panel">
         <h2>Enseignements de la partie</h2>
@@ -1021,6 +1054,11 @@ multiple = 6 + 10 × croissance du CA sur un an (bornée) + effets réputation e
         <p>Chocs macroéconomiques possibles : flambée des matières premières, crise de l'énergie, récession ou reprise, pénurie de composants, mouvement des taux, tension salariale, nouvelle norme Premium (les offres non certifiées perdent 20 % d'attractivité). Incidents propres à chaque entreprise, dont la probabilité dépend de ses décisions : panne (état du parc), grève (climat), accident (compétences, nuit), rappel produit (défauts livrés), départ d'un ingénieur clé (climat).</p>
         <p><b>Appels d'offres</b> : un volume à livrer au trimestre suivant ; l'offre la moins chère sous le plafond l'emporte, avec un avantage pour la réputation et la certification. <b>Croissance externe</b> : trois concurrents, un fournisseur et une start-up sont mis en vente au fil de la partie, par enchères sous pli scellé au-dessus d'un prix plancher. Le rachat entre équipes n'est pas possible.</p>
       </div>
+      <div className="panel">
+        <h2>Entreprises pilotées par l'IA</h2>
+        <p>L'animateur peut confier une ou plusieurs entreprises à l'IA, à la création de la partie ou en cours de route. Elles partent de la même situation que les équipes, obéissent aux mêmes règles, concourent au même classement et sont signalées par la mention <span className="ai-tag">IA</span>. Leurs décisions sont calculées au moment de la résolution, à partir des mêmes informations que celles d'une équipe ; elles ne voient pas les décisions des autres.</p>
+        <Table head={['Profil', 'Niveau', 'Comportement']} rows={Object.entries(E.AI_PROFILES).map(([k, p]) => ({ cells: [p.label, p.level, p.desc] }))} />
+      </div>
     </div>
   );
 }
@@ -1034,7 +1072,7 @@ export function ResultDialog({ r, G, onClose, onDebrief }) {
       : <button className="btn btn-primary" onClick={onClose}>Continuer</button>}>
       <Table head={['Équipe', 'Cours', 'TSR', 'Évolution']} rows={r.after.map((x) => {
         const mv = pos[x.id] - x.rank;
-        return { cells: [<span className="team-cell"><b className="rank">{x.rank}</b><Dot color={x.color} />{x.name}</span>, vpsF(x.vps), sg(x.tsr, (v) => pc(v, 0)), mv > 0 ? <span className="pos">▲ {mv}</span> : mv < 0 ? <span className="neg">▼ {-mv}</span> : <span className="muted">=</span>] };
+        return { cells: [<span className="team-cell"><b className="rank">{x.rank}</b><Dot color={x.color} />{x.name}<AiTag ai={x.ai} /></span>, vpsF(x.vps), sg(x.tsr, (v) => pc(v, 0)), mv > 0 ? <span className="pos">▲ {mv}</span> : mv < 0 ? <span className="neg">▼ {-mv}</span> : <span className="muted">=</span>] };
       })} />
       {r.news.length > 0 && <ul className="news compact">{r.news.map((x, i) => <li key={i} className={'news-' + x.kind}><span>{x.text}</span></li>)}</ul>}
       <p className="muted">Chaque équipe peut maintenant ouvrir sa console pour lire son rapport.</p>

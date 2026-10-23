@@ -2,7 +2,7 @@
 import * as E from './engine.js';
 import * as C from './components.jsx';
 const { useState, useEffect, useRef, useCallback, QL, Dot, Modal, Toggle, Setup, TopBar, MarketPanel, RankingPanel, NewsPanel, TeacherTools,
-  ResolveConfirm, TeamConsole, Debrief, Rules, ResultDialog, Chip, Table } = C;
+  ResolveConfirm, TeamConsole, Debrief, Rules, ResultDialog, Chip, Table, AiTag, aiLabel } = C;
 
 const KEY = 'forge.net.code';
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
@@ -162,7 +162,7 @@ function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen
   const G = view.G;
   const submitted = status.submitted || G.submitted || {};
   const drafted = status.drafted || {};
-  const pending = G.firms.filter((f) => !submitted[f.id]);
+  const pending = G.firms.filter((f) => !E.isAi(f) && !submitted[f.id]);
   const finished = G.phase === 'finished';
   const seen = status.lastSeen || {};
 
@@ -194,10 +194,10 @@ function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen
             </div>
             <div className="andon">
               {G.firms.map((f) => (
-                <div key={f.id} className={'andon-row' + (submitted[f.id] ? ' done' : '')}>
+                <div key={f.id} className={'andon-row' + (submitted[f.id] || E.isAi(f) ? ' done' : '')}>
                   <span className="andon-lamp" style={{ '--team': f.color }} />
-                  <span className="andon-name">{f.name}<small className={'presence' + (seen[f.id] != null && seen[f.id] < 12000 ? ' on' : '')}>{ago(seen[f.id])}</small></span>
-                  <span className="andon-state">{submitted[f.id] ? 'Validé' : drafted[f.id] ? 'Brouillon' : 'En attente'}</span>
+                  <span className="andon-name">{f.name}<AiTag ai={f.ai} />{!E.isAi(f) && <small className={'presence' + (seen[f.id] != null && seen[f.id] < 12000 ? ' on' : '')}>{ago(seen[f.id])}</small>}</span>
+                  <span className="andon-state">{E.isAi(f) ? aiLabel(f.ai) : submitted[f.id] ? 'Validé' : drafted[f.id] ? 'Brouillon' : 'En attente'}</span>
                   <button className="btn btn-sm" onClick={() => setPeek(f.id)}>Voir</button>
                 </div>
               ))}
@@ -228,7 +228,7 @@ function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen
             <p>Adresse à communiquer aux équipes : {view.addresses.map((a) => <code key={a} className="addr">{a}</code>)}</p>
           )}
           <Table head={['Équipe', 'Code', '']} rows={G.firms.map((f) => ({
-            cells: [<span className="team-cell"><Dot color={f.color} />{f.name}</span>,
+            cells: [<span className="team-cell"><Dot color={f.color} />{f.name}<AiTag ai={f.ai} /></span>,
               <code className="team-code">{reveal[f.id] ? view.codes[f.id] : '••••••'}</code>,
               <span className="row row-right">
                 <button className="btn btn-sm btn-ghost" onClick={() => setReveal({ ...reveal, [f.id]: !reveal[f.id] })}>{reveal[f.id] ? 'Masquer' : 'Afficher'}</button>
@@ -239,7 +239,9 @@ function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen
 
         <MarketPanel G={G} />
         <TeacherTools G={G} onInject={(id) => act('/api/admin/inject', { id }).then(() => onToast(`${E.GLOBAL_EVENTS[id].label} programmé pour le prochain trimestre.`)).catch(() => {})}
-          onRename={(id, name) => act('/api/admin/rename', { id, name }).catch(() => {})} onFinish={() => act('/api/admin/finish').then(() => setScreen('debrief')).catch(() => {})}>
+          onRename={(id, name) => act('/api/admin/rename', { id, name }).catch(() => {})}
+          onSetAi={(id, profile) => { const f = G.firms.find((x) => x.id === id); act('/api/admin/ai', { id, profile }).then(() => onToast(profile ? `${f.name} est confiée à l'IA (profil ${E.AI_PROFILES[profile].label}).` : `${f.name} est rendue à son équipe : communiquez-lui son code si besoin.`)).catch(() => {}); }}
+          onFinish={() => act('/api/admin/finish').then(() => setScreen('debrief')).catch(() => {})}>
           <div className="teacher-row">
             <label>Sauvegarde</label>
             <div className="row">
@@ -367,8 +369,9 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
   const f = G.firms.find((x) => x.id === fid);
   if (!f) return <div className="panel"><p>Équipe introuvable.</p><button className="btn" onClick={onLogout}>Changer de code</button></div>;
   const finished = G.phase === 'finished';
+  const byAi = E.isAi(f);
   const subs = status.submitted || {};
-  const nDone = G.firms.filter((x) => subs[x.id]).length;
+  const nDone = G.firms.filter((x) => E.isAi(x) || subs[x.id]).length;
 
   const onDraft = (nd) => {
     latest.current = nd;
@@ -395,12 +398,13 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
   if (finished) extraTabs.unshift({ key: 'debrief', label: 'Débriefing', render: () => <Debrief G={G} /> });
 
   return (
-    <TeamConsole key={finished ? 'fin' : `q${G.t}`} G={G} firmId={fid} draft={draft} submitted={submitted} onDraft={finished ? null : onDraft} extraTabs={extraTabs}
-      subtitle={finished ? 'Partie terminée' : `Décisions pour ${QL(q)} · ${nDone}/${G.firms.length} équipes ont validé`}
+    <TeamConsole key={finished ? 'fin' : `q${G.t}${byAi ? 'ia' : ''}`} G={G} firmId={fid} draft={draft} submitted={submitted} onDraft={finished || byAi ? null : onDraft} extraTabs={extraTabs}
+      subtitle={finished ? 'Partie terminée' : byAi ? `Entreprise pilotée par l'IA (profil ${E.AI_PROFILES[f.ai].label}) sur décision de l'animateur · consultation seule` : `Décisions pour ${QL(q)} · ${nDone}/${G.firms.length} équipes ont validé`}
       actions={<>
         {!finished && status.deadline && <Countdown deadline={status.deadline} skew={skew} />}
-        {!finished && (submitted ? <Chip kind="ok">Validé</Chip> : <span className={'save-state s-' + save}>{saveLabel}</span>)}
-        {!finished && <button className="btn btn-primary" onClick={validate} disabled={save === 'saving'}>{submitted ? 'Valider de nouveau' : 'Valider mes décisions'}</button>}
+        {!finished && !byAi && (submitted ? <Chip kind="ok">Validé</Chip> : <span className={'save-state s-' + save}>{saveLabel}</span>)}
+        {!finished && byAi && <Chip kind="info">{aiLabel(f.ai)}</Chip>}
+        {!finished && !byAi && <button className="btn btn-primary" onClick={validate} disabled={save === 'saving'}>{submitted ? 'Valider de nouveau' : 'Valider mes décisions'}</button>}
         <button className="btn btn-ghost" onClick={onLogout}>Quitter</button>
       </>} />
   );

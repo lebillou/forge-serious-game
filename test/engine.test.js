@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newGame, resolveQuarter, sanitize, defaultDecisions, finalDebrief, exportSave, importSave, injectEvent, GLOBAL_EVENTS, balanceSheet, bookEquity } from '../src/engine.js';
+import { newGame, resolveQuarter, sanitize, defaultDecisions, finalDebrief, exportSave, importSave, injectEvent, GLOBAL_EVENTS, balanceSheet, bookEquity, AI_PROFILES, aiDecisions, setAi, isAi, ranking } from '../src/engine.js';
 import { play, deepFinite } from './play.js';
 
 test('nouvelle partie : bilan équilibré, valorisation positive', () => {
@@ -101,4 +101,41 @@ test('fin de partie et débriefing', () => {
   assert.equal(D.teams.length, 4);
   assert.ok(D.awards.every((a) => a.team));
   assert.throws(() => resolveQuarter(G, {}));
+});
+
+test("entreprises pilotées par l'IA : décisions imposées, déterminisme, bascule, sauvegarde", () => {
+  const profiles = Object.keys(AI_PROFILES);
+  assert.deepEqual(profiles, ['passive', 'costLeader', 'balanced', 'premium', 'aggressive']);
+  const opts = { teams: ['H1', 'IA1', 'IA2', 'H2'], ai: [null, 'premium', 'inconnu', 'aggressive'], seed: 21, nQuarters: 8 };
+  let G = newGame(opts);
+  assert.deepEqual(G.firms.map((f) => f.ai), [null, 'premium', null, 'aggressive']);
+  assert.ok(G.news[0].text.includes("dont 2 pilotées par l'IA"));
+  // les décisions transmises pour une entreprise IA sont ignorées
+  const junk = { [G.firms[1].id]: { price: { S: 2.2, P: 5.5 }, production: { S: 0, P: 0 } } };
+  const a = resolveQuarter(G, junk);
+  const b = resolveQuarter(G, {});
+  assert.equal(JSON.stringify(a.firms), JSON.stringify(b.firms));
+  assert.equal(JSON.stringify(a.firms[1].lastDec), JSON.stringify(sanitize(G, G.firms[1], aiDecisions(G, G.firms[1]))));
+  assert.equal(aiDecisions(G, G.firms[0]), null);
+  assert.equal(ranking(a).find((r) => r.id === G.firms[1].id).ai, 'premium');
+  // bascule en cours de partie : brouillon abandonné, effet à la résolution suivante
+  G = b;
+  G.decisions = { [G.firms[0].id]: { price: { S: 2.2, P: 5.5 } } }; G.submitted = { [G.firms[0].id]: true };
+  const H = setAi(G, G.firms[0].id, 'balanced');
+  assert.equal(G.firms[0].ai, null, 'partie d’origine inchangée');
+  assert.ok(isAi(H.firms[0]) && !H.decisions[G.firms[0].id] && H.submitted[G.firms[0].id] === false);
+  assert.equal(setAi(H, G.firms[0].id, 'balanced'), H);
+  const H1 = resolveQuarter(H, {});
+  assert.equal(H1.firms[0].lastDec.price.S, sanitize(H, H.firms[0], aiDecisions(H, H.firms[0])).price.S);
+  assert.equal(setAi(H1, G.firms[0].id, null).firms[0].ai, null);
+  // sauvegarde : profil conservé, profil inconnu ramené à une équipe humaine
+  const save = JSON.parse(exportSave(H1)); save.game.firms[3].ai = 'disparu';
+  const L = importSave(JSON.stringify(save));
+  assert.equal(L.firms[0].ai, 'balanced'); assert.equal(L.firms[3].ai, null);
+  // déterminisme et partie complète avec tous les profils
+  const run = () => { let g = newGame({ teams: profiles, ai: profiles, seed: 4, nQuarters: 8 }); while (g.phase !== 'finished') g = resolveQuarter(g, {}); return g; };
+  const r1 = run(); const r2 = run();
+  assert.equal(JSON.stringify(r1.firms.map((f) => f.history)), JSON.stringify(r2.firms.map((f) => f.history)));
+  for (const f of r1.firms) { const bs = balanceSheet(f); assert.ok(Math.abs(bs.assets - bs.liabilities - bs.equity) < 1e-3); }
+  assert.ok(finalDebrief(r1).teams.every((t) => t.ai));
 });

@@ -2,6 +2,8 @@
 
 Serious game de gestion industrielle pour l'enseignement. Chaque équipe dirige une usine de biens d'équipement, trimestre après trimestre, face aux autres équipes et à trois concurrents régionaux. Elle décide des prix, de la capacité, des effectifs, des achats, de la qualité, de la R&D, du financement et de la croissance externe. Un débriefing automatique compare les trajectoires en fin de partie.
 
+Une partie peut compléter les équipes par des entreprises pilotées par l'IA, choisies parmi cinq profils de difficulté croissante (voir plus bas).
+
 Deux versions partagent le même moteur de simulation et le même format de sauvegarde :
 
 | Version | Usage | Installation |
@@ -81,6 +83,20 @@ tools/
   2. Settings → Secrets and variables → Actions → onglet Variables → New repository variable : `PAGES_ENABLED` = `true`.
 
   GitHub Pages n'est disponible sur un dépôt privé qu'avec un abonnement payant.
+
+## Entreprises pilotées par l'IA
+
+À la création de la partie, chaque entreprise peut être confiée à une équipe ou à l'IA. L'animateur peut aussi changer de pilote en cours de partie (Outils de l'animateur → Pilotage des entreprises), par exemple pour une équipe absente. Le changement prend effet à la résolution suivante. Les entreprises IA obéissent aux mêmes règles et concourent au même classement. Elles sont signalées par la mention « IA ».
+
+| Profil | Niveau | Comportement |
+|---|---|---|
+| Prudente | débutant | reconduit ses décisions, n'investit pas |
+| Low-cost | intermédiaire | prix bas, R&D procédé, 2×8 permanent |
+| Équilibrée | confirmé | gestion saine sur les deux segments |
+| Premium | expert | montée en gamme, R&D produit, certification immédiate |
+| Conquérante | perturbateur | croissance à crédit, prix cassés, rachats ; finit souvent surendettée |
+
+Les profils sont définis dans `AI_PROFILES` (`src/engine.js`). Ce sont les stratégies automatiques utilisées pour la calibration (`test/bots.js` les réutilise). Ils sont déterministes : une partie avec IA reste reproductible à graine fixée.
 
 ## Modèle
 

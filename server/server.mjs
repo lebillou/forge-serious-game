@@ -68,7 +68,7 @@ function newCodes(G) {
 // ---------- vues ----------
 function publicFirm(f) {
   return {
-    id: f.id, name: f.name, color: f.color, kind: f.kind, vps: f.vps, vps0: f.vps0, tsr: f.tsr, marketCap: f.marketCap, cumDivPS: f.cumDivPS,
+    id: f.id, name: f.name, color: f.color, kind: f.kind, ai: f.ai || null, vps: f.vps, vps0: f.vps0, tsr: f.tsr, marketCap: f.marketCap, cumDivPS: f.cumDivPS,
     rating: f.rating, shares: f.shares, revHist: f.revHist, report: f.report ? { pnl: { ni: f.report.pnl.ni } } : null,
     history: f.history.map((h) => ({ q: h.q, vps: h.vps, tsr: h.tsr, revenue: h.revenue, ni: h.ni, revShare: h.revShare, shareS: h.shareS, shareP: h.shareP })),
   };
@@ -153,6 +153,7 @@ async function handle(req, res) {
       if (body.q !== G.t + 1) return err(req, res, 409, 'Ce trimestre vient d’être résolu : vos données ont été rechargées.');
       if (!body.decisions || typeof body.decisions !== 'object') return err(req, res, 400, 'Décisions manquantes.');
       const f = G.firms.find((x) => x.id === who.fid);
+      if (E.isAi(f)) return err(req, res, 409, 'Votre entreprise est pilotée par l’IA sur décision de l’animateur : vos décisions ne sont pas prises en compte.');
       E.sanitize(G, f, body.decisions); // validation : lève une erreur si la structure est inexploitable
       G.decisions = { ...(G.decisions || {}), [who.fid]: body.decisions };
       G.submitted = { ...(G.submitted || {}), [who.fid]: !!body.submit };
@@ -197,6 +198,12 @@ async function handle(req, res) {
       const nm = String(body.name || '').trim().slice(0, 24);
       if (!S.G || !nm) return err(req, res, 400, 'Nom invalide.');
       S.G = { ...S.G, firms: S.G.firms.map((f) => (f.id === body.id ? { ...f, name: nm } : f)) }; changed(); return send(req, res, 200, { ok: true });
+    }
+    case '/api/admin/ai': {
+      if (!S.G || S.G.phase === 'finished') return err(req, res, 409, 'Aucune partie en cours.');
+      if (!S.G.firms.some((f) => f.id === body.id)) return err(req, res, 400, 'Équipe inconnue.');
+      if (body.profile != null && !E.AI_PROFILES[body.profile]) return err(req, res, 400, 'Profil d’IA inconnu.');
+      S.G = E.setAi(S.G, body.id, body.profile || null); changed(); return send(req, res, 200, { ok: true });
     }
     case '/api/admin/timer': {
       const m = Number(body.minutes);
