@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Icône Forge : fond ardoise de la barre supérieure, « F » en aplats, bandeau de signalisation. -->
+  <defs>
+    <pattern id="hz" width="56" height="56" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+      <rect width="56" height="56" fill="#17202a"/><rect width="28" height="56" fill="#e0a419"/>
+    </pattern>
+  </defs>
+  <rect width="512" height="512" fill="#17202a"/>
+  <g fill="#f1f4f7">
+    <rect x="166" y="112" width="56" height="244"/>
+    <rect x="166" y="112" width="180" height="52"/>
+    <rect x="166" y="212" width="140" height="48"/>
+  </g>
+  <rect x="0" y="392" width="512" height="44" fill="url(#hz)"/>
+</svg>

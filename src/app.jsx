@@ -14,8 +14,22 @@ const lsDel = () => { try { localStorage.removeItem(LS_KEY); } catch { /* idem *
 
 const capUse = (name) => (window.claude && typeof window.claude.use === 'function' ? window.claude.use(name).catch(() => null) : Promise.resolve(null));
 const inClaude = () => !!(window.claude && typeof window.claude.use === 'function');
+// Application installée sur l'écran d'accueil d'iOS : pas de dossier Téléchargements, on passe par la feuille de partage
+// (« Enregistrer dans Fichiers », AirDrop, courriel…).
+const iosApp = () => window.navigator.standalone === true;
+// Site installable, ouvert dans Safari sur iPhone ou iPad (un iPad se déclare comme un Mac à écran tactile).
+const iosInstallable = () => {
+  try {
+    return !!document.querySelector('link[rel="manifest"]') && !iosApp()
+      && (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+  } catch { return false; }
+};
 // Hors claude.ai (GitHub Pages, fichier local) : téléchargement classique par lien.
 function downloadText(filename, text) {
+  if (iosApp() && typeof File === 'function' && navigator.canShare) {
+    const file = new File([text], filename, { type: 'application/json' });
+    if (navigator.canShare({ files: [file] })) { navigator.share({ files: [file] }).catch(() => { /* partage annulé */ }); return; }
+  }
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
   const a = document.createElement('a');
   a.href = url; a.download = filename;
@@ -86,6 +100,7 @@ function Home({ hasAutosave, autosaveInfo, onNew, onResume, onLoad, onRules }) {
             {hasAutosave && <button className="btn" onClick={onResume}>Reprendre la partie en cours{autosaveInfo ? ` · ${autosaveInfo}` : ''}</button>}
             <button className="btn btn-ghost" onClick={onRules}>Règles et modèle</button>
           </div>
+          {iosInstallable() && <div className="hint">Sur iPhone ou iPad : bouton Partager de Safari, puis « Sur l'écran d'accueil ». Forge s'ouvre alors en plein écran, comme une application, et reste jouable hors connexion. Les parties de l'application et celles de Safari sont enregistrées séparément : passez de l'une à l'autre par un fichier .json.</div>}
         </div>
         <div className="panel">
           <h2>Charger une sauvegarde</h2>

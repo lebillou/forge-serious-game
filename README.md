@@ -18,7 +18,7 @@ Deux versions partagent le même moteur de simulation et le même format de sauv
 - `forge-un-poste-vX.html` : ouvrez-le dans un navigateur récent.
 - `forge-multiposte-vX.zip` : décompressez-le puis suivez `LISEZMOI.md` (installation de Node.js, lancement, distribution des codes d'équipe, test du réseau, hébergement).
 
-Si GitHub Pages est activé (voir plus bas), la version un poste est aussi jouable en ligne à l'adresse du site du dépôt.
+Si GitHub Pages est activé (voir plus bas), la version un poste est aussi jouable en ligne à l'adresse du site du dépôt. Le site s'installe comme une application : sur iPhone ou iPad, bouton Partager de Safari, puis « Sur l'écran d'accueil ». Il s'ouvre alors en plein écran et reste jouable hors connexion. Les parties de l'application installée et celles de Safari sont enregistrées séparément ; on passe de l'une à l'autre par un fichier .json.
 
 ## Développement
 
@@ -44,6 +44,7 @@ src/
   app.jsx            version un poste
   net.jsx            client multi-poste
   template.html      styles et squelette communs
+  pwa/               icône (icon.svg et PNG) et service worker du site installable
   *-entry.js, globals.js, *.css   points d'entrée et styles des pages autonomes
 server/
   server.mjs         serveur multi-poste : API JSON, vues expurgées par équipe, persistance disque
@@ -78,7 +79,7 @@ tools/
     git push origin v1.1.0
     ```
 
-- **GitHub Pages** (`.github/workflows/pages.yml`, facultatif) : publie la version un poste. Activation en deux temps :
+- **GitHub Pages** (`.github/workflows/pages.yml`, facultatif) : publie la version un poste installable (`dist/site/` : page, manifeste, icônes, service worker). La page est toujours redemandée au réseau ; le cache ne sert qu'hors connexion. Activation en deux temps :
   1. Settings → Pages → Build and deployment → Source : **GitHub Actions** ;
   2. Settings → Secrets and variables → Actions → onglet Variables → New repository variable : `PAGES_ENABLED` = `true`.
 

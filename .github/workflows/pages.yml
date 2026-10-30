@@ -1,6 +1,6 @@
 name: Publier sur GitHub Pages
 
-# Publie la version un poste autonome. Inactif tant que la variable de dépôt
+# Publie la version un poste, installable sur l'écran d'accueil et jouable hors connexion. Inactif tant que la variable de dépôt
 # PAGES_ENABLED ne vaut pas « true » (voir README) ; lancement manuel toujours possible.
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
       - name: Préparation du site
         run: |
           mkdir -p _site
-          cp dist/forge-un-poste.html _site/index.html
+          cp -R dist/site/. _site/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

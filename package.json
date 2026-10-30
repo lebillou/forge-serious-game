@@ -9,7 +9,7 @@
     "build": "node scripts/build.mjs",
     "start": "node scripts/build.mjs && node server/server.mjs",
     "test": "node --test test/engine.test.js",
-    "test:ui": "node test/ui.test.mjs && node test/standalone.test.mjs",
+    "test:ui": "node test/ui.test.mjs && node test/standalone.test.mjs && node test/site.test.mjs",
     "test:net": "node test/net.test.mjs",
     "test:all": "npm run build && npm test && npm run test:ui && npm run test:net",
     "package": "node scripts/build.mjs && node scripts/package.mjs",
