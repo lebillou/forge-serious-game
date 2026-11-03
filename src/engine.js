@@ -206,6 +206,9 @@ export function newGame(opts = {}) {
   for (const f of G.firms) { valuate(G, f); f.vps0 = f.vps; f.tsr = 0; }
   const nAi = G.firms.filter(isAi).length;
   G.news.push({ t: 0, kind: 'info', text: `Ouverture du marché : ${names.length} équipes${nAi ? ` dont ${nAi} pilotée${nAi > 1 ? 's' : ''} par l'IA` : ''}, ${G.settings.nQuarters} trimestres, scénario ${SCENARIOS[G.settings.scenario].label}.` });
+  // état initial + décisions appliquées à chaque trimestre : la partie peut être rejouée à l'identique (débriefing « et si… »)
+  G.origin = deepClone(G);
+  G.log = [];
   return G;
 }
 
@@ -300,10 +303,10 @@ export function defaultDecisions(G, f) {
     production: { S: 6200, P: 1700 }, linesBuy: 0, linesSell: 0, shifts: 2, hire: 3, fire: 0, salaryIndex: 1,
     training: 60, maintenance: 200, quality: 120, cert: false,
     rd: { S: 100, P: 200, process: 100 }, supplier: { A: 0, B: 100, C: 0 }, kitsOrder: 9900, hedge: false,
-    loan: 0, repay: 0, equity: 0, dividend: 0, study: false, tenderBid: null, acqBid: null,
+    loan: 0, repay: 0, equity: 0, dividend: 0, study: false, tenderBid: null, acqBid: null, note: '',
   };
   base.linesBuy = 0; base.linesSell = 0; base.fire = 0; base.cert = false; base.hedge = false;
-  base.loan = 0; base.repay = 0; base.equity = 0; base.dividend = 0; base.tenderBid = null; base.acqBid = null; base.study = false;
+  base.loan = 0; base.repay = 0; base.equity = 0; base.dividend = 0; base.tenderBid = null; base.acqBid = null; base.study = false; base.note = '';
   if (f.lastDec) {
     // recrutements : remplacer les départs attendus et couvrir le besoin des lignes (y compris celles en commande)
     const needed = (f.lines.length + f.pending.length) * base.shifts * CFG.opsPerLineShift;
@@ -316,6 +319,8 @@ export function defaultDecisions(G, f) {
   }
   return base;
 }
+
+export const NOTE_MAX = 600;
 
 export function sanitize(G, f, d0) {
   const def = defaultDecisions(G, f);
@@ -356,6 +361,7 @@ export function sanitize(G, f, d0) {
     ? clamp(fin(d.tenderBid, 0), 0.1, 10) : null;
   const tg = d.acqBid && G.targets.find((x) => x.id === d.acqBid.targetId && x.status === 'open');
   o.acqBid = tg && fin(d.acqBid.price, 0) > 0 ? { targetId: tg.id, price: Math.max(0, fin(d.acqBid.price, 0)) } : null;
+  o.note = typeof d.note === 'string' ? d.note.slice(0, NOTE_MAX) : '';
   return o;
 }
 
@@ -599,6 +605,7 @@ export function resolveQuarter(G0, decisionsIn = {}) {
   if (G.norm.status === 'announced' && G.norm.at < q) { G.norm.status = 'active'; news.push({ t: q, kind: 'event', text: 'La norme Premium est désormais en vigueur.' }); }
   const evToApply = [...(G.injected || [])];
   G.injected = [];
+  const logEntry = G.origin ? { q, injected: [...evToApply], dec: deepClone(dec) } : null;
   if (G.settings.events && q >= 2 && evToApply.length === 0) {
     const ids = Object.keys(GLOBAL_EVENTS);
     for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(rand(G) * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
@@ -1010,6 +1017,7 @@ export function resolveQuarter(G0, decisionsIn = {}) {
       margin: P.revenue > 0 ? P.ebit / P.revenue : 0, leverage: e > 0 ? netDebt(f) / e : null, rating: f.rating,
       lines: f.lines.length, operators: f.operators, invS: f.inv.S, invP: f.inv.P, kits: f.kits, cumDivPS: f.cumDivPS,
       wc: f.receivables + fgValue(f) + f.kits * f.kitCost - f.payables,
+      note: dec[f.id].note,
     };
     f.history.push(h);
     r.q = q; r.kpi = h;
@@ -1036,6 +1044,7 @@ export function resolveQuarter(G0, decisionsIn = {}) {
   G.lastMarket = { q, seg: { S: stripRows(mkt.seg.S), P: stripRows(mkt.seg.P) } };
   G.news.push(...news);
   G.decisions = {};
+  if (logEntry) G.log = [...(G.log || []), logEntry];
   G.t = q;
   if (G.t >= G.settings.nQuarters) {
     G.phase = 'finished';
@@ -1310,6 +1319,41 @@ export function finalDebrief(G) {
       { label: 'Climat social', team: best('lastClimate')?.name },
     ],
   };
+}
+
+// ---------- rejeu et contrefactuel ----------
+export const canReplay = (G) => !!(G && G.origin && Array.isArray(G.log) && G.log.length === G.t);
+
+// État de la partie juste avant le trimestre q (q - 1 trimestres résolus), reconstruit depuis l'état initial.
+export function replayTo(G, q) {
+  if (!canReplay(G) || q < 1 || q > G.log.length) return null;
+  let S = deepClone(G.origin);
+  for (const f of S.firms) f.ai = null; // les décisions effectivement appliquées sont rejouées telles quelles
+  S.decisions = {};
+  for (let k = 0; k < q - 1; k++) S = resolveQuarter({ ...S, injected: G.log[k].injected }, G.log[k].dec);
+  return S;
+}
+
+// Rejoue la partie en remplaçant la décision de l'entreprise fid au trimestre q ; les décisions suivantes restent celles jouées.
+export function counterfactual(G, fid, q, decision) {
+  const S0 = replayTo(G, q);
+  if (!S0 || !S0.firms.some((f) => f.id === fid)) return null;
+  const run = (alt) => {
+    let S = S0; let atQ = null;
+    for (let k = q - 1; k < G.log.length; k++) {
+      const d = k === q - 1 && alt ? { ...G.log[k].dec, [fid]: alt } : G.log[k].dec;
+      S = resolveQuarter({ ...S, injected: G.log[k].injected }, d);
+      if (k === q - 1) atQ = S;
+    }
+    const pick = (X) => {
+      const f = X.firms.find((x) => x.id === fid);
+      return { kpi: f.history[f.history.length - 1], report: f.report, rank: ranking(X).find((r) => r.id === fid).rank };
+    };
+    const fin = S.firms.find((x) => x.id === fid);
+    return { quarter: pick(atQ), final: { tsr: fin.tsr, vps: fin.vps, rank: ranking(S).find((r) => r.id === fid).rank,
+      niTot: sum(fin.history.map((h) => h.ni)), rating: fin.rating } };
+  };
+  return { q, fid, base: run(null), alt: run(sanitize(S0, S0.firms.find((f) => f.id === fid), decision)) };
 }
 
 // ---------- outils animateur ----------

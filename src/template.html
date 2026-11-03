@@ -163,6 +163,14 @@ textarea { width: 100%; border: 1px solid var(--line); border-radius: var(--r); 
 .ai-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 8px; }
 .ai-name { flex: 0 1 9rem; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
 .ai-tag { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 4px; font-size: .66rem; font-weight: 700; letter-spacing: .06em; line-height: 1.5; vertical-align: middle; background: var(--info-soft); color: var(--info); font-family: var(--f-mono); }
+.note-input { width: 100%; min-height: 4.5em; resize: vertical; border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; background: var(--panel); }
+.journal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.journal-list li { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); gap: 10px; }
+.journal-list p { margin: 0 0 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.whatif { display: flex; flex-direction: column; gap: 12px; }
+.whatif-pick select { flex: 0 1 14rem; }
+.whatif-note { font-style: italic; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.whatif-form > summary { cursor: pointer; font-weight: 600; margin-bottom: 10px; }
 .toggles { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
 .toggle { display: inline-flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: .9rem; }
 .toggle input { margin-top: 3px; accent-color: var(--accent); }

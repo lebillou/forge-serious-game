@@ -84,6 +84,7 @@ try {
   const other = tv.G.firms.find((f) => f.id === ids[1]);
   for (const k of ['cash', 'debt', 'lines', 'tech', 'operators', 'kits', 'inv', 'climate']) assert.equal(other[k], undefined, `fuite : ${k}`);
   assert.ok(tv.G.firms.find((f) => f.id === ids[0]).cash > 0);
+  assert.equal(tv.G.origin, null); assert.equal(tv.G.log.length, 0, 'journal des décisions masqué en cours de partie');
   assert.equal((await call('/api/admin/resolve', { method: 'POST', code: codes[ids[0]] })).status, 403);
   assert.equal((await call('/api/decisions', { method: 'PUT', code: codes[ids[0]], body: { q: 9, decisions: {} } })).status, 409);
   log('API : authentification, rôles, confidentialité des vues');
@@ -163,6 +164,7 @@ try {
   // vue finale complète et export
   const fin = (await call('/api/view', { code: codes[ids[1]] })).data;
   assert.equal(fin.G.phase, 'finished');
+  assert.ok(fin.G.origin && fin.G.log.length === 6, 'journal révélé en fin de partie');
   assert.ok(fin.G.firms.find((f) => f.id === ids[0]).cash !== undefined, 'données révélées en fin de partie');
   const exp = await fetch(BASE + '/api/admin/export', { headers: { 'X-Forge-Code': ADMIN } });
   const saveText = await exp.text();

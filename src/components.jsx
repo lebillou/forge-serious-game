@@ -521,7 +521,7 @@ export function Synthese({ G, f, onGo }) {
 }
 
 // ---------- décisions ----------
-export function Decisions({ G, f, d, onChange, submitted }) {
+export function Decisions({ G, f, d, onChange, submitted, journal = true }) {
   const set = (path, v) => {
     const nd = JSON.parse(JSON.stringify(d));
     const keys = path.split('.'); let o = nd;
@@ -550,6 +550,14 @@ export function Decisions({ G, f, d, onChange, submitted }) {
     <div className="dec-layout">
       <div className="dec-form">
         {submitted && <div className="msg msg-ok">Décisions validées. Toute modification annule la validation : validez de nouveau avant de masquer.</div>}
+        {journal && (
+          <section className="panel dsec">
+            <h3>Journal de l'équipe</h3>
+            <Field label="Hypothèses et intentions du trimestre" htmlFor="dec-note" hint={`Ce que vous anticipez, ce que vous cherchez à obtenir, l'arbitrage que vous assumez. Relu au débriefing face aux résultats. ${(d.note || '').length} / ${E.NOTE_MAX} caractères.`}>
+              <textarea id="dec-note" className="note-input" rows="3" maxLength={E.NOTE_MAX} value={d.note || ''} placeholder="Ex. : la demande Premium va accélérer ; on accepte une trésorerie tendue pour acheter une ligne avant les concurrents." onChange={(e) => set('note', e.target.value)} />
+            </Field>
+          </section>
+        )}
         <section className="panel dsec">
           <h3>Commercial</h3>
           <div className="seg-grid">
@@ -957,6 +965,91 @@ export function Historique({ G, f }) {
       <div className="panel"><h3>Technologie face à la moyenne</h3>
         <LineChart xLabels={xl} series={[{ label: 'Standard', color: 'var(--seg-s)', data: H.map((h) => h.techS) }, { label: 'Premium', color: 'var(--seg-p)', data: H.map((h) => h.techP) }]} />
       </div>
+      <JournalPanel f={f} />
+    </div>
+  );
+}
+
+// ---------- journal et contrefactuel ----------
+export function JournalPanel({ f, title = 'Journal de l’équipe' }) {
+  const H = f.history.filter((h) => h.note);
+  if (!H.length) return null;
+  return (
+    <div className="panel journal">
+      <h3>{title}</h3>
+      <ol className="journal-list">
+        {H.map((h) => (
+          <li key={h.q}>
+            <span className="news-q">{QL(h.q)}</span>
+            <div><p>{h.note}</p><div className="muted">Résultat : CA {ke(h.revenue)} · résultat net {ke(h.ni)} · cours {vpsF(h.vps)} · TSR {sg(h.tsr, (x) => pc(x, 0))}</div></div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+const WHATIF_FIELDS = [
+  ['price.S', 'Prix Standard', (x) => eu(x)], ['price.P', 'Prix Premium', (x) => eu(x)], ['marketing.S', 'Marketing Standard', ke], ['marketing.P', 'Marketing Premium', ke],
+  ['production.S', 'Production Standard', (x) => `${n0(x)} u.`], ['production.P', 'Production Premium', (x) => `${n0(x)} u.`], ['shifts', 'Organisation', shiftLabel],
+  ['linesBuy', 'Lignes achetées', n0], ['linesSell', 'Lignes cédées', n0], ['hire', 'Recrutements', n0], ['fire', 'Licenciements', n0],
+  ['salaryIndex', 'Indice de salaire', (x) => n0(x * 100)], ['training', 'Formation', ke], ['maintenance', 'Maintenance', ke], ['quality', 'Contrôle qualité', ke],
+  ['rd.S', 'R&D Standard', ke], ['rd.P', 'R&D Premium', ke], ['rd.process', 'R&D procédé', ke], ['kitsOrder', 'Commande de kits', n0],
+  ['loan', 'Emprunt', ke], ['repay', 'Remboursement', ke], ['equity', 'Augmentation de capital', ke], ['dividend', 'Dividende', ke],
+  ['cert', 'Certification', (x) => (x ? 'oui' : 'non')], ['hedge', 'Couverture', (x) => (x ? 'oui' : 'non')], ['study', 'Étude de marché', (x) => (x ? 'oui' : 'non')],
+  ['tenderBid', "Offre à l'appel d'offres", (x) => (x == null ? 'aucune' : eu(x))], ['acqBid', 'Offre de rachat', (x) => (x ? `${x.targetId} · ${ke(x.price)}` : 'aucune')],
+];
+const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+
+export function WhatIf({ G }) {
+  const [fid, setFid] = useState(G.firms[0].id);
+  const [q, setQ] = useState(1);
+  const [draft, setDraft] = useState(null);
+  const [res, setRes] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const S0 = useMemo(() => E.replayTo(G, q), [G, q]);
+  if (!E.canReplay(G)) return <div className="panel"><h2>Et si… ?</h2><p className="muted">Indisponible pour cette partie : elle a été créée avant l'enregistrement du journal des décisions.</p></div>;
+  const played = G.log[q - 1].dec[fid];
+  const f0 = S0.firms.find((x) => x.id === fid);
+  const d = draft || played;
+  const chosen = E.sanitize(S0, f0, d);
+  const changes = WHATIF_FIELDS.filter(([p]) => JSON.stringify(getPath(chosen, p)) !== JSON.stringify(getPath(played, p)));
+  const reset = (nf, nq) => { setFid(nf); setQ(nq); setDraft(null); setRes(null); };
+  const simulate = () => { setBusy(true); setTimeout(() => { try { setRes(E.counterfactual(G, fid, q, d)); } finally { setBusy(false); } }, 0); };
+  const K = res && [
+    ["Chiffre d'affaires", (r) => ke(r.quarter.kpi.revenue)], ['EBITDA', (r) => ke(r.quarter.kpi.ebitda)], ['Résultat net', (r) => ke(r.quarter.kpi.ni)],
+    ['Part de marché Standard', (r) => pc(r.quarter.kpi.shareS)], ['Part de marché Premium', (r) => pc(r.quarter.kpi.shareP)],
+    ['TRS', (r) => pc(r.quarter.kpi.trs)], ['Taux de service', (r) => pc(r.quarter.kpi.fill)], ['Défauts livrés', (r) => pc(r.quarter.kpi.escRate, 2)],
+    ['Climat social', (r) => n0(r.quarter.kpi.climate)], ['Trésorerie nette', (r) => ke(r.quarter.kpi.cash - r.quarter.kpi.overdraft)], ['Cours', (r) => vpsF(r.quarter.kpi.vps)],
+    ['Événements', (r) => (r.quarter.report.events.map((e) => e.text).join(' · ') || '—')],
+  ];
+  const F = res && [
+    ['TSR final', (r) => sg(r.final.tsr, (x) => pc(x, 0))], ['Rang final', (r) => `${r.final.rank}e`], ['Résultat net cumulé', (r) => ke(r.final.niTot)], ['Notation finale', (r) => r.final.rating],
+  ];
+  return (
+    <div className="panel whatif">
+      <h2>Et si… ?</h2>
+      <p className="muted">Rejouez un trimestre en changeant les décisions d'une équipe, toutes les autres décisions restant celles de la partie. La conjoncture est la même ; les incidents propres à l'entreprise peuvent changer, puisque leur probabilité dépend des décisions. La suite de la partie est rejouée avec les décisions effectivement prises ensuite par l'équipe, qui n'avaient pas été pensées pour ce scénario : la lecture la plus fiable est celle du trimestre modifié.</p>
+      <div className="row whatif-pick">
+        <select id="whatif-team" value={fid} onChange={(e) => reset(e.target.value, q)}>{G.firms.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+        <select id="whatif-q" value={q} onChange={(e) => reset(fid, Number(e.target.value))}>{G.log.map((_, i) => <option key={i} value={i + 1}>{QL(i + 1)}</option>)}</select>
+        {draft && <button className="btn btn-sm btn-ghost" onClick={() => { setDraft(null); setRes(null); }}>Revenir aux décisions jouées</button>}
+      </div>
+      {played.note && <p className="whatif-note">Journal de l'équipe pour ce trimestre : « {played.note} »</p>}
+      <details className="whatif-form">
+        <summary>Modifier les décisions de {QL(q)} ({changes.length ? `${changes.length} modification${changes.length > 1 ? 's' : ''}` : 'identiques à la partie'})</summary>
+        <Decisions G={S0} f={f0} d={d} onChange={(nd) => { setDraft(nd); setRes(null); }} journal={false} />
+      </details>
+      {changes.length > 0 && (
+        <Table head={['Décision', 'Jouée', 'Testée']} rows={changes.map(([p, label, fmt]) => ({ cells: [label, fmt(getPath(played, p)), <b>{fmt(getPath(chosen, p))}</b>] }))} />
+      )}
+      <div className="row"><button className="btn btn-primary" disabled={busy || !changes.length} onClick={simulate}>{busy ? 'Simulation…' : 'Simuler'}</button>{!changes.length && <span className="muted">Modifiez au moins une décision.</span>}</div>
+      {res && (
+        <div className="grid2 whatif-res">
+          <div><h4>{QL(q)}</h4><Table head={['', 'Joué', 'Testé']} rows={K.map(([l, fn]) => ({ cells: [l, fn(res.base), <b>{fn(res.alt)}</b>] }))} /></div>
+          <div><h4>Fin de partie</h4><Table head={['', 'Joué', 'Testé']} rows={F.map(([l, fn]) => ({ cells: [l, fn(res.base), <b>{fn(res.alt)}</b>] }))} /></div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1005,6 +1098,10 @@ export function Debrief({ G, onBack, onOpenTeam }) {
           <li>Qu'auriez-vous fait différemment en connaissant la courbe de demande finale ? Ce regret est-il raisonnable au regard de l'information dont vous disposiez ?</li>
         </ul>
       </div>
+      {G.firms.some((f) => f.history.some((h) => h.note)) && (
+        <div className="grid2">{G.firms.filter((f) => f.history.some((h) => h.note)).map((f) => <JournalPanel key={f.id} f={f} title={`Journal — ${f.name}`} />)}</div>
+      )}
+      <WhatIf G={G} />
     </div>
   );
 }

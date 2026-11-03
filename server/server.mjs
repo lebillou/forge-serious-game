@@ -77,6 +77,8 @@ function teamView(fid) {
   const G = S.G;
   const base = { ...G, rng: 0, seed: 0, injected: [], decisions: {}, submitted: G.submitted || {} };
   if (G.phase === 'finished') return base; // débriefing : tout est public
+  // l'état initial et le journal contiennent les décisions de toutes les équipes : révélés seulement en fin de partie
+  base.origin = null; base.log = [];
   base.viewTechAvg = { S: E.marketTechAvg(G, 'S'), P: E.marketTechAvg(G, 'P') };
   base.firms = G.firms.map((f) => (f.id === fid ? f : publicFirm(f)));
   if (G.lastMarket) base.lastMarket = { q: G.lastMarket.q, seg: Object.fromEntries(E.SEGS.map((s) => [s, { total: G.lastMarket.seg[s].total, avgP: G.lastMarket.seg[s].avgP }])) };

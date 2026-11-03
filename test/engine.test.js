@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newGame, resolveQuarter, sanitize, defaultDecisions, finalDebrief, exportSave, importSave, injectEvent, GLOBAL_EVENTS, balanceSheet, bookEquity, AI_PROFILES, aiDecisions, setAi, isAi, ranking } from '../src/engine.js';
+import { newGame, resolveQuarter, sanitize, defaultDecisions, finalDebrief, exportSave, importSave, injectEvent, GLOBAL_EVENTS, balanceSheet, bookEquity, AI_PROFILES, aiDecisions, setAi, isAi, ranking, replayTo, counterfactual, canReplay, NOTE_MAX } from '../src/engine.js';
 import { play, deepFinite } from './play.js';
 
 test('nouvelle partie : bilan équilibré, valorisation positive', () => {
@@ -138,4 +138,31 @@ test("entreprises pilotées par l'IA : décisions imposées, déterminisme, basc
   assert.equal(JSON.stringify(r1.firms.map((f) => f.history)), JSON.stringify(r2.firms.map((f) => f.history)));
   for (const f of r1.firms) { const bs = balanceSheet(f); assert.ok(Math.abs(bs.assets - bs.liabilities - bs.equity) < 1e-3); }
   assert.ok(finalDebrief(r1).teams.every((t) => t.ai));
+});
+
+test('journal des décisions, rejeu exact et contrefactuel', () => {
+  let G = newGame({ teams: ['A', 'B', 'C'], ai: [null, 'premium', null], seed: 31, nQuarters: 8 });
+  G = injectEvent(G, 'mp');
+  for (let i = 0; i < 6; i++) {
+    if (i === 2) G = setAi(G, 'e3', 'costLeader');
+    const f = G.firms[0];
+    G = resolveQuarter(G, { [f.id]: { ...defaultDecisions(G, f), note: `n${i}`.padEnd(i === 5 ? 900 : 2, 'x') } });
+  }
+  assert.ok(canReplay(G));
+  assert.equal(G.firms[0].history[0].note, 'n0');
+  assert.equal(G.firms[0].history[5].note.length, NOTE_MAX, 'note bornée');
+  assert.equal(defaultDecisions(G, G.firms[0]).note, '', 'la note ne se reporte pas');
+  // rejeu de toute la partie : historique identique au bit près
+  let R = replayTo(G, 6); R = resolveQuarter({ ...R, injected: G.log[5].injected }, G.log[5].dec);
+  assert.equal(JSON.stringify(R.firms.map((f) => f.history)), JSON.stringify(G.firms.map((f) => f.history)));
+  // même décision : résultats identiques à la partie ; décision modifiée : résultats différents
+  const same = counterfactual(G, 'e1', 3, G.log[2].dec.e1);
+  assert.equal(same.base.final.tsr, G.firms[0].tsr); assert.equal(same.alt.final.tsr, same.base.final.tsr);
+  const alt = counterfactual(G, 'e1', 3, { ...G.log[2].dec.e1, price: { S: 1.3, P: 3.4 } });
+  assert.ok(alt.alt.quarter.kpi.shareS < alt.base.quarter.kpi.shareS, 'prix plus élevé, part de marché plus faible');
+  assert.equal(replayTo(G, 7), null);
+  // sauvegarde : le rejeu survit à l'export / import ; une partie sans journal ne se rejoue pas
+  assert.ok(canReplay(importSave(exportSave(G))));
+  const old = JSON.parse(exportSave(G)); delete old.game.origin; delete old.game.log;
+  assert.equal(canReplay(importSave(JSON.stringify(old))), false);
 });

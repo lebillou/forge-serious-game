@@ -50,6 +50,10 @@ for (let q = 1; q <= 8; q++) {
     await click($$('.tab').find((b) => b.textContent === 'Décisions'), 'décisions');
     await type('#price-S', String(980 + i * 20));
     await type('#mkt-P', '260');
+    if (q === 1 && i === 0) {
+      const ta = $('#dec-note'); const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+      set.call(ta, 'Pari sur le Premium'); ta.dispatchEvent(new window.Event('input', { bubbles: true })); await flush();
+    }
     if (q === 2 && i === 0) { await type('#loan', '7000'); await type('#lines-buy', '1'); await check('#cert'); await check('#study'); }
     if (q === 4 && i === 1) { await click($$('.seg-btn').find((b) => b.textContent === '3×8'), '3x8'); await type('#hire', '40'); }
     if ($('#tender-on') && i === 1) { await check('#tender-on'); }
@@ -72,6 +76,15 @@ for (let q = 1; q <= 8; q++) {
 }
 if (!document.body.textContent.includes('Distinctions')) throw new Error('débriefing absent');
 step('débriefing');
+if (!document.body.textContent.includes('Pari sur le Premium')) throw new Error('journal absent du débriefing');
+{
+  const sel = $('#whatif-q'); sel.value = '1'; sel.dispatchEvent(new window.Event('change', { bubbles: true })); await flush();
+  $('.whatif-form').open = true; await flush();
+  await type('.whatif-form #maint', '0');
+  await click(btn('Simuler'), 'simuler');
+  if (!$('.whatif-res') || !$('.whatif-res').textContent.includes('TSR final')) throw new Error('contrefactuel absent');
+}
+step('journal et « Et si… ? »');
 await click($$('button').find((b) => b.textContent === 'Comptes détaillés'), 'comptes');
 await click(btn('Afficher la console'), 'afficher');
 for (const t of ['Production', 'Marché', 'Finances', 'Historique']) await click($$('.tab').find((b) => b.textContent === t), t);
