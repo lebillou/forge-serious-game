@@ -151,7 +151,7 @@ function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen
   if (!status.hasGame || !view || !view.G) {
     return (
       <div className="stack-lg">
-        <Setup onStart={(opts) => act('/api/admin/new', opts).catch(() => {})} onCancel={null} />
+        <Setup net onStart={(opts) => act('/api/admin/new', opts).catch(() => {})} onCancel={null} />
         <div className="panel narrow-panel">
           <h2>Reprendre une partie sauvegardée</h2>
           <ImportButton act={act} onToast={onToast} />
@@ -165,6 +165,7 @@ function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen
   const pending = G.firms.filter((f) => !E.isAi(f) && !submitted[f.id]);
   const finished = G.phase === 'finished';
   const seen = status.lastSeen || {};
+  const rolesDone = (fid) => (G.settings.roles ? E.ROLE_KEYS.filter((r) => ((status.submittedRoles || {})[fid] || {})[r]).length : 0);
 
   const resolve = async () => {
     const before = E.ranking(G);
@@ -197,7 +198,7 @@ function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen
                 <div key={f.id} className={'andon-row' + (submitted[f.id] || E.isAi(f) ? ' done' : '')}>
                   <span className="andon-lamp" style={{ '--team': f.color }} />
                   <span className="andon-name">{f.name}<AiTag ai={f.ai} />{!E.isAi(f) && <small className={'presence' + (seen[f.id] != null && seen[f.id] < 12000 ? ' on' : '')}>{ago(seen[f.id])}</small>}</span>
-                  <span className="andon-state">{E.isAi(f) ? aiLabel(f.ai) : submitted[f.id] ? 'Validé' : drafted[f.id] ? 'Brouillon' : 'En attente'}</span>
+                  <span className="andon-state">{E.isAi(f) ? aiLabel(f.ai) : submitted[f.id] ? 'Validé' : rolesDone(f.id) ? `${rolesDone(f.id)} / ${E.ROLE_KEYS.length} rôles` : drafted[f.id] ? 'Brouillon' : 'En attente'}</span>
                   <button className="btn btn-sm" onClick={() => setPeek(f.id)}>Voir</button>
                 </div>
               ))}
@@ -308,9 +309,32 @@ function ImportButton({ act, onToast, small }) {
 }
 
 // ---------- équipe ----------
+const rolesKey = (code) => `forge.net.roles.${code}`;
+const loadRoles = (code) => { try { return E.validRoles(JSON.parse(lsGet(rolesKey(code)) || '[]')); } catch { return []; } };
+
+function RolePicker({ onPick, initial }) {
+  const [sel, setSel] = useState(initial || []);
+  return (
+    <div className="panel role-pick">
+      <h2>Votre rôle dans l'équipe</h2>
+      <p>Chaque rôle saisit sa partie des décisions sur son propre poste et voit le reste en lecture. L'équipe est validée quand les trois rôles ont validé leur partie. Dans une petite équipe, cumulez plusieurs rôles.</p>
+      {E.ROLE_KEYS.map((r) => (
+        <Toggle key={r} id={`role-${r}`} checked={sel.includes(r)} onChange={(v) => setSel(v ? [...sel, r] : sel.filter((x) => x !== r))}>
+          <b>{E.ROLES[r].label}</b>
+        </Toggle>
+      ))}
+      <div className="row"><button className="btn btn-primary" disabled={!sel.length} onClick={() => onPick(E.validRoles(sel))}>Commencer</button></div>
+    </div>
+  );
+}
+
 function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
   const [draft, setDraft] = useState(null);
   const [submitted, setSubmitted] = useState(false);
+  const [roles, setRoles] = useState(() => loadRoles(code));
+  const [rolesOpen, setRolesOpen] = useState(false);
+  const [subRoles, setSubRoles] = useState({});
+  const srevRef = useRef(null);
   const [save, setSave] = useState('idle'); // idle | pending | saving | saved | error
   const quarterRef = useRef(null);
   const timerRef = useRef(null);
@@ -328,19 +352,32 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
       const first = quarterRef.current === null;
       quarterRef.current = key;
       clearTimeout(timerRef.current);
-      setDraft(view.draft); setSubmitted(view.submitted); setSave('idle');
+      setDraft(view.draft); setSubmitted(view.submitted); setSubRoles(view.submittedRoles || {}); setSave('idle');
       if (!first) { onToast(G.phase === 'finished' ? 'Partie terminée : le débriefing est disponible.' : `Trimestre ${QL(G.t)} résolu : votre rapport est disponible.`); }
     } else if (save === 'idle' || save === 'saved') {
-      setSubmitted(view.submitted);
+      setSubmitted(view.submitted); setSubRoles(view.submittedRoles || {});
+      if (G.settings.roles) setDraft(view.draft); // saisies des autres rôles de l'équipe
     }
   }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // rôles : une saisie d'un coéquipier fait évoluer le brouillon commun ; on le recharge quand on n'est pas en train d'écrire
+  const rolesOn = !!(G && G.settings.roles);
+  useEffect(() => {
+    if (!rolesOn || !status) return;
+    if (srevRef.current !== null && status.srev !== srevRef.current && (save === 'idle' || save === 'saved')) reload().catch(() => {});
+    srevRef.current = status.srev;
+  }, [status && status.srev]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const push = useCallback(async (d, submit) => {
     setSave('saving');
     try {
-      await api('/api/decisions', { method: 'PUT', code, body: { q, decisions: d, submit } });
-      if (latest.current === d) setSave('saved');
-      if (submit) { setSubmitted(true); onToast('Décisions validées. Vous pouvez encore les modifier jusqu’à la résolution.'); }
+      const r = await api('/api/decisions', { method: 'PUT', code, body: { q, decisions: d, submit, roles } });
+      if (latest.current === d) { setSave('saved'); if (r.draft) setDraft(r.draft); }
+      if (r.submittedRoles) setSubRoles(r.submittedRoles);
+      if (submit) {
+        setSubmitted(!!r.submitted);
+        onToast(r.submittedRoles && !r.submitted ? 'Votre partie est validée. L’équipe le sera quand tous les rôles auront validé.' : 'Décisions validées. Vous pouvez encore les modifier jusqu’à la résolution.');
+      }
     } catch (e) {
       if (e.status === 0) {
         // coupure réseau ou serveur redémarré : nouvel essai tant que la saisie n'a pas changé
@@ -353,7 +390,7 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
       onToast(e.message);
       if (e.status === 409) reload().catch(() => {});
     }
-  }, [code, q, onToast, reload]);
+  }, [code, q, onToast, reload, roles]);
   pushRef.current = push;
 
   if (!status) return <div className="panel"><p className="muted">Connexion au serveur…</p></div>;
@@ -370,6 +407,11 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
   if (!f) return <div className="panel"><p>Équipe introuvable.</p><button className="btn" onClick={onLogout}>Changer de code</button></div>;
   const finished = G.phase === 'finished';
   const byAi = E.isAi(f);
+  if (rolesOn && !finished && !byAi && (!roles.length || rolesOpen)) {
+    return <RolePicker initial={roles} onPick={(rs) => { lsSet(rolesKey(code), JSON.stringify(rs)); setRoles(rs); setRolesOpen(false); }} />;
+  }
+  const editable = rolesOn ? roles.flatMap((r) => E.ROLES[r].sections) : null;
+  const myRolesDone = rolesOn && roles.every((r) => subRoles[r]);
   const subs = status.submitted || {};
   const nDone = G.firms.filter((x) => E.isAi(x) || subs[x.id]).length;
 
@@ -398,13 +440,15 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
   if (finished) extraTabs.unshift({ key: 'debrief', label: 'Débriefing', render: () => <Debrief G={G} /> });
 
   return (
-    <TeamConsole key={finished ? 'fin' : `q${G.t}${byAi ? 'ia' : ''}`} G={G} firmId={fid} draft={draft} submitted={submitted} onDraft={finished || byAi ? null : onDraft} extraTabs={extraTabs}
+    <TeamConsole key={finished ? 'fin' : `q${G.t}${byAi ? 'ia' : ''}`} G={G} firmId={fid} draft={draft} submitted={submitted} onDraft={finished || byAi ? null : onDraft} extraTabs={extraTabs} editable={editable}
       subtitle={finished ? 'Partie terminée' : byAi ? `Entreprise pilotée par l'IA (profil ${E.AI_PROFILES[f.ai].label}) sur décision de l'animateur · consultation seule` : `Décisions pour ${QL(q)} · ${nDone}/${G.firms.length} équipes ont validé`}
       actions={<>
         {!finished && status.deadline && <Countdown deadline={status.deadline} skew={skew} />}
+        {!finished && !byAi && rolesOn && <span className="role-chips">{E.ROLE_KEYS.map((r) => <Chip key={r} kind={subRoles[r] ? 'ok' : 'neutral'}>{E.ROLES[r].label}{subRoles[r] ? ' ✓' : ''}</Chip>)}</span>}
         {!finished && !byAi && (submitted ? <Chip kind="ok">Validé</Chip> : <span className={'save-state s-' + save}>{saveLabel}</span>)}
         {!finished && byAi && <Chip kind="info">{aiLabel(f.ai)}</Chip>}
-        {!finished && !byAi && <button className="btn btn-primary" onClick={validate} disabled={save === 'saving'}>{submitted ? 'Valider de nouveau' : 'Valider mes décisions'}</button>}
+        {!finished && !byAi && <button className="btn btn-primary" onClick={validate} disabled={save === 'saving'}>{rolesOn ? (myRolesDone ? 'Valider de nouveau ma partie' : 'Valider ma partie') : submitted ? 'Valider de nouveau' : 'Valider mes décisions'}</button>}
+        {!finished && !byAi && rolesOn && <button className="btn btn-ghost" onClick={() => setRolesOpen(true)}>Rôle : {roles.map((r) => E.ROLES[r].label).join(' + ')}</button>}
         <button className="btn btn-ghost" onClick={onLogout}>Quitter</button>
       </>} />
   );

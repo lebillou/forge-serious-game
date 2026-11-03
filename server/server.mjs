@@ -118,7 +118,8 @@ function page() { if (!pageCache || process.env.FORGE_DEV) pageCache = fs.readFi
 function statusFor(who) {
   const G = S.G;
   const out = { rev: S.rev, srev: S.srev, now: Date.now(), deadline: S.deadline, hasGame: !!G };
-  if (G) Object.assign(out, { phase: G.phase, t: G.t, nQ: G.settings.nQuarters, submitted: G.submitted || {}, drafted: Object.fromEntries(G.firms.map((f) => [f.id, !!(G.decisions && G.decisions[f.id])])) });
+  if (G) Object.assign(out, { phase: G.phase, t: G.t, nQ: G.settings.nQuarters, submitted: G.submitted || {}, drafted: Object.fromEntries(G.firms.map((f) => [f.id, !!(G.decisions && G.decisions[f.id])])),
+    submittedRoles: G.settings.roles ? G.submittedRoles || {} : undefined });
   if (who && who.role === 'admin') out.lastSeen = Object.fromEntries(Object.entries(lastSeen).map(([k, v]) => [k, Date.now() - v]));
   return out;
 }
@@ -144,7 +145,8 @@ async function handle(req, res) {
   if (req.method === 'GET' && p === '/api/view') {
     if (who.role === 'admin') return send(req, res, 200, { role: 'admin', G: S.G, canUndo: !!S.prev, codes: S.codes, deadline: S.deadline, rev: S.rev, addresses: lanAddresses(req) });
     const G = S.G;
-    return send(req, res, 200, { role: 'team', firmId: who.fid, G: teamView(who.fid), draft: (G.decisions || {})[who.fid] || null, submitted: !!(G.submitted || {})[who.fid], rev: S.rev });
+    return send(req, res, 200, { role: 'team', firmId: who.fid, G: teamView(who.fid), draft: (G.decisions || {})[who.fid] || null, submitted: !!(G.submitted || {})[who.fid],
+      submittedRoles: (G.submittedRoles || {})[who.fid] || {}, rev: S.rev, srev: S.srev });
   }
 
   if (who.role === 'team') {
@@ -157,6 +159,19 @@ async function handle(req, res) {
       const f = G.firms.find((x) => x.id === who.fid);
       if (E.isAi(f)) return err(req, res, 409, 'Votre entreprise est pilotée par l’IA sur décision de l’animateur : vos décisions ne sont pas prises en compte.');
       E.sanitize(G, f, body.decisions); // validation : lève une erreur si la structure est inexploitable
+      if (G.settings.roles) {
+        // rôles : seuls les champs des rôles du poste sont fusionnés ; l'équipe est validée quand chaque rôle a validé sa partie
+        const roles = E.validRoles(body.roles);
+        if (!roles.length) return err(req, res, 400, 'Choisissez au moins un rôle avant de saisir des décisions.');
+        const merged = E.mergeRoleDecisions(G, f, (G.decisions || {})[who.fid], body.decisions, roles);
+        const sr = { ...((G.submittedRoles || {})[who.fid] || {}) };
+        for (const r of roles) sr[r] = !!body.submit;
+        G.decisions = { ...(G.decisions || {}), [who.fid]: merged };
+        G.submittedRoles = { ...(G.submittedRoles || {}), [who.fid]: sr };
+        G.submitted = { ...(G.submitted || {}), [who.fid]: E.ROLE_KEYS.every((r) => sr[r]) };
+        S.srev++; persistSoon();
+        return send(req, res, 200, { ok: true, submitted: G.submitted[who.fid], submittedRoles: sr, draft: merged, srev: S.srev });
+      }
       G.decisions = { ...(G.decisions || {}), [who.fid]: body.decisions };
       G.submitted = { ...(G.submitted || {}), [who.fid]: !!body.submit };
       S.srev++; persistSoon();
@@ -183,7 +198,7 @@ async function handle(req, res) {
       if (!S.G || S.G.phase === 'finished') return err(req, res, 409, 'Aucun trimestre à résoudre.');
       if (body.t !== undefined && body.t !== S.G.t) return err(req, res, 409, 'Ce trimestre a déjà été résolu.');
       const ng = E.resolveQuarter(S.G, S.G.decisions || {});
-      ng.submitted = {};
+      ng.submitted = {}; ng.submittedRoles = {};
       S.prev = S.G; S.G = ng; S.deadline = null;
       changed(); return send(req, res, 200, { ok: true, q: ng.t });
     }

@@ -86,6 +86,12 @@ tools/
 
   GitHub Pages n'est disponible sur un dépôt privé qu'avec un abonnement payant.
 
+## Journal, « Et si… ? » et rôles
+
+- **Journal de décisions** : à chaque trimestre, l'équipe note ses hypothèses et l'arbitrage qu'elle assume. Le journal est relu dans l'historique et au débriefing, face aux résultats.
+- **« Et si… ? »** : la partie conserve son état initial (`G.origin`) et les décisions appliquées à chaque trimestre (`G.log`). Le moteur étant déterministe, le débriefing peut rejouer un trimestre avec d'autres décisions pour une équipe et comparer trimestre et fin de partie (`replayTo`, `counterfactual` dans `src/engine.js`). En multi-poste, ces données ne sont révélées aux équipes qu'en fin de partie.
+- **Rôles** (multi-poste, option) : Commercial, Production et Finance saisissent chacun leur partie ; le serveur fusionne les saisies champ par champ (`ROLES`, `mergeRoleDecisions`) et l'équipe est validée quand les trois rôles ont validé.
+
 ## Entreprises pilotées par l'IA
 
 À la création de la partie, chaque entreprise peut être confiée à une équipe ou à l'IA. L'animateur peut aussi changer de pilote en cours de partie (Outils de l'animateur → Pilotage des entreprises), par exemple pour une équipe absente. Le changement prend effet à la résolution suivante. Les entreprises IA obéissent aux mêmes règles et concourent au même classement. Elles sont signalées par la mention « IA ».

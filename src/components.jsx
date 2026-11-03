@@ -172,7 +172,7 @@ export function Kpi({ label, value, sub, tone }) {
 // ---------- paramétrage ----------
 const aiProfiles = (list) => [...new Set(list.filter(Boolean))].map((k) => [k, E.AI_PROFILES[k]]);
 
-export function Setup({ onStart, onCancel }) {
+export function Setup({ onStart, onCancel, net = false }) {
   const [n, setN] = useState(4);
   const [names, setNames] = useState(['Aubisque', 'Tourmalet', 'Soulor', 'Peyresourde', 'Aspin', 'Marie-Blanque']);
   const [ai, setAi] = useState([null, null, null, null, null, null]);
@@ -181,6 +181,7 @@ export function Setup({ onStart, onCancel }) {
   const [events, setEvents] = useState(true);
   const [tenders, setTenders] = useState(true);
   const [ma, setMa] = useState(true);
+  const [roles, setRoles] = useState(false);
   const [seed, setSeed] = useState('');
   return (
     <div className="page narrow">
@@ -214,13 +215,14 @@ export function Setup({ onStart, onCancel }) {
           <Toggle id="opt-events" checked={events} onChange={setEvents}>Aléas (chocs économiques, pannes, grèves, rappels)</Toggle>
           <Toggle id="opt-tenders" checked={tenders} onChange={setTenders}>Appels d'offres</Toggle>
           <Toggle id="opt-ma" checked={ma} onChange={setMa}>Croissance externe (rachat de concurrents, fournisseur, start-up)</Toggle>
+          {net && <Toggle id="opt-roles" checked={roles} onChange={setRoles}>Rôles dans chaque équipe : {E.ROLE_KEYS.map((r) => E.ROLES[r].label.toLowerCase()).join(', ')}. Chacun saisit sa partie sur son poste ; l'équipe est validée quand les trois rôles ont validé.</Toggle>}
         </div>
         <Field label="Graine aléatoire (facultatif)" htmlFor="seed" hint="Deux parties lancées avec la même graine et les mêmes décisions donnent les mêmes résultats.">
           <input id="seed" className="txt" inputMode="numeric" value={seed} onChange={(e) => setSeed(e.target.value.replace(/\D/g, ''))} placeholder="aléatoire" />
         </Field>
       </div>
       <div className="row-end">
-        <button className="btn btn-primary" onClick={() => onStart({ teams: names.slice(0, n), ai: ai.slice(0, n), nQuarters: nQ, scenario, events, tenders, ma, seed: seed ? Number(seed) : undefined })}>Lancer la partie</button>
+        <button className="btn btn-primary" onClick={() => onStart({ teams: names.slice(0, n), ai: ai.slice(0, n), roles: net && roles, nQuarters: nQ, scenario, events, tenders, ma, seed: seed ? Number(seed) : undefined })}>Lancer la partie</button>
       </div>
     </div>
   );
@@ -414,7 +416,7 @@ export const TABS = [
 ];
 
 
-export function TeamConsole({ G, firmId, draft, onDraft, submitted, actions, subtitle, extraTabs = [] }) {
+export function TeamConsole({ G, firmId, draft, onDraft, submitted, actions, subtitle, extraTabs = [], editable = null, banner = null }) {
   const f = G.firms.find((x) => x.id === firmId);
   const finished = G.phase === 'finished';
   const [tab, setTab] = useState('synthese');
@@ -441,7 +443,7 @@ export function TeamConsole({ G, firmId, draft, onDraft, submitted, actions, sub
       </nav>
       <div className="console-body">
         {tab === 'synthese' && <Synthese G={G} f={f} onGo={canDecide ? setTab : null} />}
-        {tab === 'decisions' && canDecide && <Decisions G={G} f={f} d={d} onChange={onDraft} submitted={submitted} />}
+        {tab === 'decisions' && canDecide && <>{banner}<Decisions G={G} f={f} d={d} onChange={onDraft} submitted={submitted} editable={editable} /></>}
         {tab === 'production' && <Production G={G} f={f} />}
         {tab === 'marche' && <Marche G={G} f={f} />}
         {tab === 'finances' && <Finances G={G} f={f} />}
@@ -521,7 +523,11 @@ export function Synthese({ G, f, onGo }) {
 }
 
 // ---------- décisions ----------
-export function Decisions({ G, f, d, onChange, submitted, journal = true }) {
+const SECTION_ROLE = Object.fromEntries(Object.entries(E.ROLES).flatMap(([k, r]) => r.sections.map((sec) => [sec, r.label])));
+
+export function Decisions({ G, f, d, onChange, submitted, journal = true, editable = null }) {
+  const lock = (sec) => !!editable && !editable.includes(sec);
+  const Lock = ({ sec }) => (lock(sec) ? <span className="role-lock">{SECTION_ROLE[sec]} · lecture seule</span> : null);
   const set = (path, v) => {
     const nd = JSON.parse(JSON.stringify(d));
     const keys = path.split('.'); let o = nd;
@@ -558,8 +564,9 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true }) {
             </Field>
           </section>
         )}
-        <section className="panel dsec">
-          <h3>Commercial</h3>
+        <section className={'panel dsec' + (lock('commercial') ? ' locked' : '')}>
+          <h3>Commercial<Lock sec="commercial" /></h3>
+          <fieldset className="fs" disabled={lock('commercial')}>
           <div className="seg-grid">
             {SEGS.map((sg_) => (
               <div key={sg_} className={'seg-card seg-' + sg_.toLowerCase()}>
@@ -574,10 +581,12 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true }) {
               </div>
             ))}
           </div>
+          </fieldset>
         </section>
 
-        <section className="panel dsec">
-          <h3>Production et capacité</h3>
+        <section className={'panel dsec' + (lock('production') ? ' locked' : '')}>
+          <h3>Production et capacité<Lock sec="production" /></h3>
+          <fieldset className="fs" disabled={lock('production')}>
           <div className="fgrid">
             <Field label="Production Standard" htmlFor="prod-S" hint={`Stock actuel ${n0(f.inv.S)} u.`}>
               <Num id="prod-S" value={d.production.S} step={100} max={80000} unit="u." onChange={(v) => set('production.S', Math.round(v))} />
@@ -598,10 +607,12 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true }) {
               <Num id="maint" value={d.maintenance} step={10} max={4000} unit="k€" onChange={(v) => set('maintenance', v)} />
             </Field>
           </div>
+          </fieldset>
         </section>
 
-        <section className="panel dsec">
-          <h3>Ressources humaines</h3>
+        <section className={'panel dsec' + (lock('rh') ? ' locked' : '')}>
+          <h3>Ressources humaines<Lock sec="rh" /></h3>
+          <fieldset className="fs" disabled={lock('rh')}>
           <div className="fgrid">
             <Field label="Recrutements" htmlFor="hire" hint={`Maximum ${pv.maxHires} · ${ke(CFG.hireCost)} par recrue · départs volontaires estimés ${pv.quitsEst}`}>
               <Num id="hire" value={d.hire} step={1} max={pv.maxHires} unit="pers." onChange={(v) => set('hire', Math.round(v))} />
@@ -616,10 +627,12 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true }) {
               <Num id="training" value={d.training} step={10} max={3000} unit="k€" onChange={(v) => set('training', v)} />
             </Field>
           </div>
+          </fieldset>
         </section>
 
-        <section className="panel dsec">
-          <h3>Achats de composants</h3>
+        <section className={'panel dsec' + (lock('achats') ? ' locked' : '')}>
+          <h3>Achats de composants<Lock sec="achats" /></h3>
+          <fieldset className="fs" disabled={lock('achats')}>
           {f.captive ? (
             <p className="muted">Approvisionnement intégré via votre filiale : prix −18 %, fiabilité 99,5 %, meilleure qualité.</p>
           ) : (
@@ -647,10 +660,12 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true }) {
             )}
           </div>
           {!f.captive && supTotal > 0 && Math.abs(supTotal - 100) > 0.5 && <div className="hint">Les parts seront ramenées à 100 % au prorata (total saisi : {n0(supTotal)} %).</div>}
+          </fieldset>
         </section>
 
-        <section className="panel dsec">
-          <h3>Qualité, R&D et certification</h3>
+        <section className={'panel dsec' + (lock('qualite') ? ' locked' : '')}>
+          <h3>Qualité, R&D et certification<Lock sec="qualite" /></h3>
+          <fieldset className="fs" disabled={lock('qualite')}>
           <div className="fgrid">
             <Field label="Contrôle qualité" htmlFor="quality" hint="Intercepte les défauts avant livraison (rebuts) plutôt que chez le client (garantie, réputation)">
               <Num id="quality" value={d.quality} step={10} max={3000} unit="k€" onChange={(v) => set('quality', v)} />
@@ -668,10 +683,12 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true }) {
               {f.cert.status === 'none' ? <Toggle id="cert" checked={d.cert} onChange={(v) => set('cert', v)}>Lancer le projet ({ke(CFG.certCost)} × 2 trimestres)</Toggle> : <Chip kind={f.cert.status === 'ok' ? 'ok' : f.cert.status === 'suspended' ? 'bad' : 'info'}>{certLabel(f)}</Chip>}
             </Field>
           </div>
+          </fieldset>
         </section>
 
-        <section className="panel dsec">
-          <h3>Finance</h3>
+        <section className={'panel dsec' + (lock('finance') ? ' locked' : '')}>
+          <h3>Finance<Lock sec="finance" /></h3>
+          <fieldset className="fs" disabled={lock('finance')}>
           <div className="fgrid">
             <Field label="Nouvel emprunt" htmlFor="loan" hint={`Capacité d'emprunt ${ke(pv.loanCap)} · taux actuel ${nf2.format(f.rate)} % (notation ${f.rating}), variable`}>
               <Num id="loan" value={d.loan} step={500} max={100000} unit="k€" onChange={(v) => set('loan', v)} />
@@ -686,11 +703,14 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true }) {
               <Num id="dividend" value={d.dividend} step={100} max={100000} unit="k€" onChange={(v) => set('dividend', v)} />
             </Field>
           </div>
+          </fieldset>
         </section>
 
         <section className="panel dsec">
           <h3>Opportunités</h3>
           <div className="stack">
+            <fieldset className="fs stack" disabled={lock('opp-commercial')}>
+            <Lock sec="opp-commercial" />
             <Toggle id="study" checked={d.study} onChange={(v) => set('study', v)}>Commander une étude de marché ({ke(CFG.studyCost)}) : technologie, réputation, notoriété et capacité de chaque concurrent dans le prochain rapport</Toggle>
             {tender ? (
               <div className="opp">
@@ -701,7 +721,11 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true }) {
                 </div>
               </div>
             ) : <p className="muted">Aucun appel d'offres ouvert ce trimestre.</p>}
+            </fieldset>
+            <fieldset className="fs stack" disabled={lock('opp-finance')}>
+            {G.settings.ma && <Lock sec="opp-finance" />}
             {targets.length > 0 ? targets.map((t) => <TargetCard key={t.id} G={G} t={t} d={d} set={set} />) : (G.settings.ma && <p className="muted">Aucune entreprise à vendre pour le moment.</p>)}
+            </fieldset>
           </div>
         </section>
       </div>
@@ -1008,7 +1032,7 @@ export function WhatIf({ G }) {
   const [res, setRes] = useState(null);
   const [busy, setBusy] = useState(false);
   const S0 = useMemo(() => E.replayTo(G, q), [G, q]);
-  if (!E.canReplay(G)) return <div className="panel"><h2>Et si… ?</h2><p className="muted">Indisponible pour cette partie : elle a été créée avant l'enregistrement du journal des décisions.</p></div>;
+  if (!E.canReplay(G)) return <div className="panel"><h2>Et si… ?</h2><p className="muted">{G.t === 0 ? 'Aucun trimestre joué pour le moment.' : "Indisponible pour cette partie : elle a été créée avant l'enregistrement du journal des décisions."}</p></div>;
   const played = G.log[q - 1].dec[fid];
   const f0 = S0.firms.find((x) => x.id === fid);
   const d = draft || played;

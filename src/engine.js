@@ -160,6 +160,7 @@ export function newGame(opts = {}) {
       nQuarters: clamp(Math.round(fin(opts.nQuarters, 20)), 4, 32),
       scenario: SCENARIOS[opts.scenario] ? opts.scenario : 'standard',
       events: opts.events !== false, tenders: opts.tenders !== false, ma: opts.ma !== false,
+      roles: !!opts.roles, // multi-poste : décisions réparties entre les rôles commercial, production et finance
     },
     t: 0, phase: 'decisions',
     macro: { kitIndex: 100, kitSmooth: 100, energyIndex: 100, baseRate: 3.5, salaryBase: CFG.salaryBase, cyclePhase: 0, effects: [] },
@@ -321,6 +322,23 @@ export function defaultDecisions(G, f) {
 }
 
 export const NOTE_MAX = 600;
+
+// Rôles (multi-poste) : chaque rôle ne modifie que ses champs ; le journal (note) est commun à l'équipe.
+export const ROLES = {
+  commercial: { label: 'Commercial', fields: ['offer', 'price', 'marketing', 'tenderBid', 'study'], sections: ['commercial', 'opp-commercial'] },
+  production: { label: 'Production', fields: ['production', 'linesBuy', 'linesSell', 'shifts', 'hire', 'fire', 'salaryIndex', 'training', 'maintenance', 'quality', 'cert', 'rd', 'supplier', 'kitsOrder', 'hedge'], sections: ['production', 'rh', 'achats', 'qualite'] },
+  finance: { label: 'Finance', fields: ['loan', 'repay', 'equity', 'dividend', 'acqBid'], sections: ['finance', 'opp-finance'] },
+};
+export const ROLE_KEYS = Object.keys(ROLES);
+export const validRoles = (list) => (Array.isArray(list) ? ROLE_KEYS.filter((r) => list.includes(r)) : []);
+
+// Fusionne dans le brouillon de l'équipe les seuls champs des rôles indiqués (et le journal).
+export function mergeRoleDecisions(G, f, current, incoming, roles) {
+  const out = JSON.parse(JSON.stringify(current || defaultDecisions(G, f)));
+  for (const r of validRoles(roles)) for (const k of ROLES[r].fields) if (incoming && k in incoming) out[k] = JSON.parse(JSON.stringify(incoming[k]));
+  if (incoming && typeof incoming.note === 'string') out.note = incoming.note;
+  return out;
+}
 
 export function sanitize(G, f, d0) {
   const def = defaultDecisions(G, f);
@@ -585,6 +603,7 @@ export function setAi(G, fid, profile) {
   f.ai = p;
   if (N.decisions) delete N.decisions[fid];
   if (N.submitted) N.submitted = { ...N.submitted, [fid]: false };
+  if (N.submittedRoles) N.submittedRoles = { ...N.submittedRoles, [fid]: {} };
   return N;
 }
 
@@ -1322,7 +1341,7 @@ export function finalDebrief(G) {
 }
 
 // ---------- rejeu et contrefactuel ----------
-export const canReplay = (G) => !!(G && G.origin && Array.isArray(G.log) && G.log.length === G.t);
+export const canReplay = (G) => !!(G && G.t > 0 && G.origin && Array.isArray(G.log) && G.log.length === G.t);
 
 // État de la partie juste avant le trimestre q (q - 1 trimestres résolus), reconstruit depuis l'état initial.
 export function replayTo(G, q) {

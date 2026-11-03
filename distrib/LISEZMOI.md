@@ -47,11 +47,13 @@ Le pare-feu peut aussi bloquer le port : vérifiez que Node.js est autorisé sur
 4. **Lancez le minuteur** (15 minutes par défaut). Le compte à rebours s'affiche sur chaque poste.
 5. **Les équipes saisissent leurs décisions.** Le brouillon est enregistré sur le serveur à chaque modification, si bien qu'un rafraîchissement ou un changement de poste ne fait rien perdre. Elles cliquent ensuite sur « Valider mes décisions », et votre tableau de bord passe leur voyant au vert.
 6. **Résolvez le trimestre.** Une équipe qui n'a pas validé joue son brouillon, ou à défaut ses décisions précédentes. Chaque poste reçoit son rapport dans les secondes qui suivent.
-7. Le **débriefing** final est accessible à l'animateur et à chaque équipe, avec toutes les données de la partie.
+7. Le **débriefing** final est accessible à l'animateur et à chaque équipe, avec toutes les données de la partie. Il reprend le journal de chaque équipe (ses hypothèses, trimestre par trimestre, face aux résultats) et propose « Et si… ? » : rejouer un trimestre avec d'autres décisions pour en mesurer l'effet.
 
 En cas d'erreur de manipulation, « Annuler la dernière résolution » revient au trimestre précédent, décisions des équipes comprises.
 
-Conseil pratique : une seule personne par équipe saisit les décisions. Les autres membres peuvent se connecter avec le même code pour consulter les rapports, mais si deux personnes modifient le même formulaire, c'est la dernière saisie qui l'emporte.
+**Rôles dans les équipes** (option à la création de la partie) : chaque membre se connecte avec le code de son équipe puis choisit son rôle, Commercial (prix, marketing, appels d'offres, étude de marché), Production (production, capacité, effectifs, achats, qualité, R&D) ou Finance (financement, dividendes, rachats). Une personne peut cumuler plusieurs rôles. Chacun ne modifie que sa partie et voit le reste en lecture ; les saisies simultanées ne s'écrasent pas. L'équipe est validée quand les trois rôles ont validé, et votre tableau de bord indique combien l'ont fait. Le journal de l'équipe est commun à tous.
+
+Sans cette option, une seule personne par équipe doit saisir les décisions : les autres membres peuvent se connecter avec le même code pour consulter les rapports, mais si deux personnes modifient le même formulaire, c'est la dernière saisie qui l'emporte.
 
 ### Entreprises pilotées par l'IA
 

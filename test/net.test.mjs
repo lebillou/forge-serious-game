@@ -199,6 +199,44 @@ try {
   assert.equal((await call('/api/decisions', { method: 'PUT', code: adm3.codes[h], body: { q: 2, decisions: {} } })).status, 200);
   log('entreprises pilotées par l’IA (création, refus des saisies, bascule, résolution)');
 
+  // ----- rôles dans les équipes -----
+  r = await call('/api/admin/new', { method: 'POST', code: ADMIN, body: { teams: ['Nord', 'Sud'], roles: true, nQuarters: 4, seed: 5 } });
+  assert.equal(r.status, 200);
+  const adm5 = (await call('/api/view', { code: ADMIN })).data;
+  const nord = adm5.G.firms[0].id; const cN = adm5.codes[nord];
+  assert.equal(adm5.G.settings.roles, true);
+  assert.equal((await call('/api/decisions', { method: 'PUT', code: cN, body: { q: 1, decisions: { price: { S: 1.1, P: 2.7 } } } })).status, 400, 'saisie sans rôle refusée');
+  const put = (roles, decisions, submit = false) => call('/api/decisions', { method: 'PUT', code: cN, body: { q: 1, decisions, submit, roles } });
+  // saisies concurrentes : le commercial et la finance envoient chacun un formulaire complet, seuls leurs champs comptent
+  assert.equal((await put(['commercial'], { price: { S: 1.12, P: 2.71 }, loan: 999 })).status, 200);
+  r = await put(['finance'], { price: { S: 0.5, P: 1.3 }, loan: 4000 });
+  assert.deepEqual([r.data.draft.price.S, r.data.draft.price.P, r.data.draft.loan], [1.12, 2.71, 4000], 'fusion par rôle');
+  r = await put(['commercial'], { price: { S: 1.12, P: 2.71 } }, true);
+  assert.equal(r.data.submitted, false); assert.equal(r.data.submittedRoles.commercial, true);
+  r = await put(['production', 'finance'], { shifts: 3 }, true);
+  assert.equal(r.data.submitted, true, 'équipe validée quand les trois rôles ont validé');
+  const st = (await call('/api/status', { code: ADMIN })).data;
+  assert.equal(st.submitted[nord], true); assert.equal(st.submittedRoles[nord].production, true);
+  r = await put(['commercial'], { price: { S: 1.2, P: 2.71 } });
+  assert.equal(r.data.submitted, false, 'une modification annule la validation de l’équipe');
+  // navigateur : choix du rôle, sections des autres rôles verrouillées
+  const R1 = await browser('rôle commercial').open();
+  await until(() => R1.$('#login-code'), 'connexion rôle');
+  await R1.type('#login-code', cN); await R1.submit('form');
+  await until(() => R1.$('#role-commercial'), 'choix du rôle');
+  R1.$('#role-commercial').click(); await tick(30);
+  await R1.click(R1.btn('Commencer'), 'commencer');
+  await until(() => R1.$$('.tab').some((b) => b.textContent === 'Décisions'), 'console rôle');
+  await R1.click(R1.$$('.tab').find((b) => b.textContent === 'Décisions'), 'décisions');
+  await until(() => R1.$('#price-S'), 'formulaire rôle');
+  assert.equal(R1.$('#price-S').closest('fieldset').disabled, false, 'prix modifiable par le commercial');
+  assert.equal(R1.$('#loan').closest('fieldset').disabled, true, 'emprunt verrouillé pour le commercial');
+  assert.equal(R1.$('#prod-S').closest('fieldset').disabled, true, 'production verrouillée pour le commercial');
+  assert.ok(R1.text().includes('Finance · lecture seule'));
+  await until(() => R1.$('#price-S').value.replace(/\D/g, '') === '1200', 'brouillon commun chargé');
+  R1.check(); R1.close();
+  log('rôles dans les équipes (fusion des saisies, validation par rôle, sections verrouillées)');
+
   for (const b of [A, T1, T2]) b.check();
   log('aucune erreur ni avertissement React sur les trois postes');
   for (const b of [A, T1, T2]) b.close();
