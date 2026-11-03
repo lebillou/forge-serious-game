@@ -105,7 +105,7 @@ test('fin de partie et débriefing', () => {
 
 test("entreprises pilotées par l'IA : décisions imposées, déterminisme, bascule, sauvegarde", () => {
   const profiles = Object.keys(AI_PROFILES);
-  assert.deepEqual(profiles, ['passive', 'costLeader', 'balanced', 'premium', 'aggressive']);
+  assert.deepEqual(profiles, ['passive', 'discount', 'costLeader', 'balanced', 'premium', 'aggressive']);
   const opts = { teams: ['H1', 'IA1', 'IA2', 'H2'], ai: [null, 'premium', 'inconnu', 'aggressive'], seed: 21, nQuarters: 8 };
   let G = newGame(opts);
   assert.deepEqual(G.firms.map((f) => f.ai), [null, 'premium', null, 'aggressive']);

@@ -41,7 +41,9 @@ export const CFG = {
   warranty: { S: 0.45, P: 1.3 },
   certCost: 250, certAudit: 30, studyCost: 40, hedgePremium: 0.03,
   maxLeverage: 3.5,
-  rdValuation: 0.4,                   // part de la R&D annuelle réintégrée à l'EBITDA dans la valorisation
+  rdValuation: 0.4,
+  climateSalary: 150,                 // points de climat cible par unité d'indice de salaire
+  strikeClimate: 45,                  // climat sous lequel une grève devient possible                   // part de la R&D annuelle réintégrée à l'EBITDA dans la valorisation
 };
 
 export const SCENARIOS = {
@@ -460,9 +462,9 @@ export const AI_PROFILES = {
     desc: 'Reconduit ses décisions et recale la production sur la demande. N\'investit pas : une cible facile.',
     decide(G, f) { return defaultDecisions(G, f); },
   },
-  costLeader: {
-    label: 'Low-cost', level: 'Intermédiaire',
-    desc: 'Prix bas, R&D procédé, 2×8 permanent. Pèse sur les prix du Standard ; s\'endette parfois trop.',
+  discount: {
+    label: 'Discount', level: 'Intermédiaire',
+    desc: 'Brade les deux gammes, sous-investit en Premium, 2×8 permanent. L\'erreur classique de la guerre des prix : pèse sur le marché, mais perd du terrain.',
     decide(G, f) {
       const d = defaultDecisions(G, f);
       d.price = { S: 0.95, P: 2.55 };
@@ -481,6 +483,17 @@ export const AI_PROFILES = {
       if (G.tender && G.tender.status === 'open') d.tenderBid = Math.round(G.tender.maxPrice * 0.92 * 100) / 100;
       if (f.cash > 7000 && f.surveillance === 0) d.dividend = Math.round((f.cash - 6000) * 0.5);
       return aiPlanOps(G, f, d, false);
+    },
+  },
+  costLeader: {
+    label: 'Low-cost', level: 'Confirmé',
+    desc: 'Domination par les coûts sur le Standard (prix bas, R&D procédé, marketing de volume) sans sacrifier le Premium. Au niveau de l\'Équilibrée.',
+    decide(G, f) {
+      const d = AI_PROFILES.balanced.decide(G, f);
+      d.price = { ...d.price, S: 0.95 };
+      d.rd = { ...d.rd, process: 400 };
+      d.marketing = { ...d.marketing, S: 220 };
+      return d;
     },
   },
   balanced: {
@@ -504,7 +517,7 @@ export const AI_PROFILES = {
     },
   },
   premium: {
-    label: 'Premium', level: 'Expert',
+    label: 'Premium', level: 'Confirmé',
     desc: 'Montée en gamme : R&D produit, fournisseurs haut de gamme, certification immédiate, prix élevés. Rivale de l\'Équilibrée : un peu devant en environnement standard, derrière en environnement stable.',
     decide(G, f) {
       const d = defaultDecisions(G, f);
@@ -524,23 +537,27 @@ export const AI_PROFILES = {
   },
   aggressive: {
     label: 'Conquérante', level: 'Perturbateur',
-    desc: 'Croissance à crédit : prix cassés, marketing massif, 3×8, rachats de concurrents. Déstabilise le marché et finit souvent surendettée.',
+    desc: 'Croissance à crédit : remises, marketing massif, capacité et rachats de concurrents tant que la dette le permet. Finit souvent surendettée.',
     decide(G, f) {
       const d = defaultDecisions(G, f);
-      d.price = { S: 0.93, P: 2.45 };
-      d.marketing = { S: 450, P: 450 };
-      aiProduction(G, f, d, 1.15);
-      d.shifts = 3;
-      if (G.t < G.settings.nQuarters - 6 && f.lines.length + f.pending.length < 8) {
-        const cap = loanCapacity(f);
-        if (cap > CFG.lineCost) { d.linesBuy = 1; d.loan = CFG.lineCost; }
-      }
+      d.price = { S: 0.96, P: 2.55 };
+      d.marketing = { S: 300, P: 300 };
+      d.rd = { S: 100, P: 250, process: 100 };
+      aiProduction(G, f, d);
+      // le moins d'équipes possible pour couvrir le plan de production
+      let sh = 1;
+      while (sh < 3 && preview(G, f, { ...d, shifts: sh }).grossCapEq < preview(G, f, d).planEq * 1.02) sh++;
+      d.shifts = sh;
+      const e = ttm(f.ebitdaHist);
+      const lev = e > 0 ? netDebt(f) / e : Infinity;
+      if (G.t < G.settings.nQuarters - 6 && f.lines.length + f.pending.length < 8 && lev < 3
+        && preview(G, f, { ...d, shifts: 3 }).loadPct > 0.9 && loanCapacity(f) > CFG.lineCost) { d.linesBuy = 1; d.loan = CFG.lineCost; }
       d.maintenance = 60 * f.lines.length;
       d.training = 0.5 * f.operators;
       d.quality = 0.012 * eqOf(d.production);
-      if (G.settings.ma) {
+      if (G.settings.ma && lev < 2.5) {
         const tg = G.targets.find((t) => t.status === 'open' && t.type === 'competitor');
-        if (tg) { const ask = targetAsk(G, tg); d.loan = Math.max(d.loan, ask); d.acqBid = { targetId: tg.id, price: ask * 1.05 }; d.linesBuy = 0; }
+        if (tg) { const ask = targetAsk(G, tg); if (loanCapacity(f) > ask) { d.loan = Math.max(d.loan, ask); d.acqBid = { targetId: tg.id, price: ask * 1.05 }; d.linesBuy = 0; } }
       }
       if (G.tender && G.tender.status === 'open') d.tenderBid = Math.round(G.tender.maxPrice * 0.88 * 100) / 100;
       return aiPlanOps(G, f, d);
@@ -709,7 +726,7 @@ export function resolveQuarter(G0, decisionsIn = {}) {
     let breakdown = false, strike = false;
     if (G.settings.events) {
       if (rand(G) < (0.03 + 0.30 * Math.pow(1 - f.condition / 100, 2)) * ef) { breakdown = true; avail *= 0.8; r.events.push({ kind: 'panne', text: 'Panne majeure sur une ligne : disponibilité −20 %, réparation 120 k€.' }); }
-      if (f.climate < 38 && rand(G) < ((38 - f.climate) / 40) * ef) { strike = true; avail *= 0.65; r.events.push({ kind: 'greve', text: 'Grève : disponibilité −35 % ce trimestre.' }); }
+      if (f.climate < CFG.strikeClimate && rand(G) < ((CFG.strikeClimate - f.climate) / 40) * ef) { strike = true; avail *= 0.65; r.events.push({ kind: 'greve', text: 'Grève : disponibilité −35 % ce trimestre.' }); }
     }
     const perf = perfOf(f.skill, f.climate);
     const grossCapEq = machineCapEq * avail * perf;
@@ -857,7 +874,7 @@ export function resolveQuarter(G0, decisionsIn = {}) {
     const wear = 6 * CFG.shiftWear[f.shifts] * (1 + avgAge(f.lines) / 40);
     const mpl = f.lines.length ? d.maintenance / f.lines.length : 0;
     f.condition = clamp(f.condition - wear + (100 - f.condition) * (1 - Math.exp(-mpl / 150)), 0, 100);
-    const climTarget = 60 + 120 * (f.salaryIndex - 1) + 0.15 * (f.skill - 50) - (f.shifts === 3 ? 10 : 0) - (f.surveillance > 0 ? 8 : 0) + (certOk(f) ? 3 : 0);
+    const climTarget = 60 + CFG.climateSalary * (f.salaryIndex - 1) + 0.15 * (f.skill - 50) - (f.shifts === 3 ? 10 : 0) - (f.surveillance > 0 ? 8 : 0) + (certOk(f) ? 3 : 0);
     f.climate = clamp(0.7 * f.climate + 0.3 * climTarget + (r.strike ? 10 : 0), 0, 100);
     if (G.settings.events) {
       const ef = 0.5 + 0.5 * scen.eventF;

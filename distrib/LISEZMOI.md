@@ -55,7 +55,7 @@ Conseil pratique : une seule personne par équipe saisit les décisions. Les aut
 
 ### Entreprises pilotées par l'IA
 
-S'il manque des équipes, ou pour corser la partie, confiez une ou plusieurs entreprises à l'IA dès la création de la partie. Cinq profils sont proposés : Prudente (débutant), Low-cost (intermédiaire), Équilibrée (confirmé), Premium (expert) et Conquérante (perturbateur). Une entreprise IA n'a pas besoin de code : elle décide seule au moment de la résolution et ne bloque jamais le compteur des validations.
+S'il manque des équipes, ou pour corser la partie, confiez une ou plusieurs entreprises à l'IA dès la création de la partie. Six profils sont proposés : Prudente (débutant), Discount (intermédiaire), Low-cost, Équilibrée et Premium (confirmés, chacun avantagé par un environnement différent) et Conquérante (perturbateur). Une entreprise IA n'a pas besoin de code : elle décide seule au moment de la résolution et ne bloque jamais le compteur des validations.
 
 En cours de partie, « Outils de l'animateur », puis « Pilotage des entreprises », permet de confier à l'IA l'entreprise d'une équipe absente, puis de la lui rendre. Le changement s'applique à la prochaine résolution, et le brouillon de l'équipe est abandonné. Pendant ce temps, l'équipe peut toujours se connecter avec son code pour consulter ses rapports, mais elle ne peut plus saisir de décisions.
 

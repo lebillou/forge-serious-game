@@ -2,7 +2,7 @@
 
 Serious game de gestion industrielle pour l'enseignement. Chaque équipe dirige une usine de biens d'équipement, trimestre après trimestre, face aux autres équipes et à trois concurrents régionaux. Elle décide des prix, de la capacité, des effectifs, des achats, de la qualité, de la R&D, du financement et de la croissance externe. Un débriefing automatique compare les trajectoires en fin de partie.
 
-Une partie peut compléter les équipes par des entreprises pilotées par l'IA, choisies parmi cinq profils de difficulté croissante (voir plus bas).
+Une partie peut compléter les équipes par des entreprises pilotées par l'IA, choisies parmi six profils de difficulté croissante (voir plus bas).
 
 Deux versions partagent le même moteur de simulation et le même format de sauvegarde :
 
@@ -93,10 +93,11 @@ tools/
 | Profil | Niveau | Comportement |
 |---|---|---|
 | Prudente | débutant | reconduit ses décisions, n'investit pas |
-| Low-cost | intermédiaire | prix bas, R&D procédé, 2×8 permanent |
+| Discount | intermédiaire | brade les deux gammes et sous-investit en Premium : l'erreur classique de la guerre des prix |
+| Low-cost | confirmé | domination par les coûts sur le Standard sans sacrifier le Premium ; la plus forte en environnement stable |
 | Équilibrée | confirmé | gestion saine sur les deux segments |
-| Premium | expert | montée en gamme, R&D produit, certification immédiate |
-| Conquérante | perturbateur | croissance à crédit, prix cassés, rachats ; finit souvent surendettée |
+| Premium | confirmé | montée en gamme, R&D produit, certification immédiate ; la plus forte en environnement volatil |
+| Conquérante | perturbateur | croissance à crédit, remises, rachats ; finit souvent surendettée |
 
 Les profils sont définis dans `AI_PROFILES` (`src/engine.js`). Ce sont les stratégies automatiques utilisées pour la calibration (`test/bots.js` les réutilise). Ils sont déterministes : une partie avec IA reste reproductible à graine fixée.
 
