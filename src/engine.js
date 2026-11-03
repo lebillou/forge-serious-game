@@ -14,14 +14,14 @@ export const CFG = {
   elasticity: { S: 2.2, P: 1.7 },     // élasticité-prix de la part de marché
   marketElasticity: { S: 0.6, P: 0.4 },
   repBeta: { S: 0.4, P: 1.0 },
-  techGamma: { S: 0.025, P: 0.05 },
-  techSat: 8,                         // saturation de l'avantage technologique (points)
+  techGamma: { S: 0.02, P: 0.02 },    // calibration : au-delà, la R&D Premium devient une stratégie dominante (npm run tournoi)
+  techSat: 6,                         // saturation de l'avantage technologique (points)
   techDiffusion: 0.08,                // part de l'écart rattrapée par trimestre par imitation
   mktAlpha: { S: 0.25, P: 0.3 },
   brandRef: 600,
   demandPerTeam: { S: 6200, P: 1700 },
   npcDemand: { S: 5000, P: 1600 },
-  growth: { S: 0.008, P: 0.025 },
+  growth: { S: 0.010, P: 0.018 },
   season: [0.96, 1.04, 0.92, 1.08],
   lineCap: 1600, opsPerLineShift: 15, lineCost: 6000, lineLife: 24, lineSaleRatio: 0.6,
   shiftPremium: [0, 1.0, 1.05, 1.13],   // prime moyenne : 2e équipe +10 %, nuit +30 %
@@ -41,6 +41,7 @@ export const CFG = {
   warranty: { S: 0.45, P: 1.3 },
   certCost: 250, certAudit: 30, studyCost: 40, hedgePremium: 0.03,
   maxLeverage: 3.5,
+  rdValuation: 0.4,                   // part de la R&D annuelle réintégrée à l'EBITDA dans la valorisation
 };
 
 export const SCENARIOS = {
@@ -238,7 +239,7 @@ function valuate(G, f) {
   const g = revPrev > 0 ? rev / revPrev - 1 : 0;
   const techF = (f.tech.S + f.tech.P) / 2 - (marketTechAvg(G, 'S') + marketTechAvg(G, 'P')) / 2;
   const m = clamp(6 + 10 * clamp(g, -0.15, 0.25) + 0.04 * (f.reputation - 60) + 0.03 * techF, 3, 11);
-  const ev = Math.max(0, e + 0.4 * ttm(f.rdHist || [])) * m;
+  const ev = Math.max(0, e + CFG.rdValuation * ttm(f.rdHist || [])) * m;
   const value = Math.max(ev - netDebt(f), 0.6 * Math.max(bookEquity(f), 0), 50);
   f.multiple = m;
   f.marketCap = value;
@@ -504,7 +505,7 @@ export const AI_PROFILES = {
   },
   premium: {
     label: 'Premium', level: 'Expert',
-    desc: 'Montée en gamme : R&D produit, fournisseurs haut de gamme, certification immédiate, prix élevés. La stratégie la plus performante des tournois.',
+    desc: 'Montée en gamme : R&D produit, fournisseurs haut de gamme, certification immédiate, prix élevés. Rivale de l\'Équilibrée : un peu devant en environnement standard, derrière en environnement stable.',
     decide(G, f) {
       const d = defaultDecisions(G, f);
       d.price = { S: 1.0, P: 2.85 };

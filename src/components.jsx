@@ -462,7 +462,7 @@ export function Synthese({ G, f, onGo }) {
       <div className="stack-lg">
         <div className="panel brief">
           <h3>Votre situation de départ</h3>
-          <p>Vous prenez la direction d'une usine de biens d'équipement qui fabrique deux gammes : <b>Standard</b>, un marché de volume sensible au prix, et <b>Premium</b>, plus petit mais en croissance de 2,5 % par trimestre, sensible à la technologie et à la réputation. Toutes les équipes partent d'une situation identique.</p>
+          <p>Vous prenez la direction d'une usine de biens d'équipement qui fabrique deux gammes : <b>Standard</b>, un marché de volume sensible au prix, et <b>Premium</b>, plus petit mais en croissance de {pc(CFG.growth.P)} par trimestre, sensible à la technologie et à la réputation. Toutes les équipes partent d'une situation identique.</p>
           <ul className="facts">
             <li><b>{f.lines.length} lignes</b> de production en {shiftLabel(f.shifts)}, âge moyen {n0(f.lines.reduce((s, l) => s + l.age, 0) / f.lines.length)} trimestres ; une ligne neuve coûte {ke(CFG.lineCost)} et entre en service le trimestre suivant.</li>
             <li><b>{f.operators} opérateurs</b> ({CFG.opsPerLineShift} par ligne et par équipe), salaire de marché {ke(G.macro.salaryBase)} par trimestre.</li>
@@ -1010,6 +1010,8 @@ export function Debrief({ G, onBack, onOpenTeam }) {
 }
 
 // ---------- règles ----------
+const dec = (x) => String(x).replace('.', ',');
+
 export function Rules({ onBack, net }) {
   return (
     <div className="page narrow rules">
@@ -1021,11 +1023,11 @@ export function Rules({ onBack, net }) {
       </div>
       <div className="panel">
         <h2>Marché</h2>
-        <p>Deux segments. Le <b>Standard</b> (≈ 6 200 unités par équipe et par trimestre au départ, +0,8 % par trimestre) est sensible au prix. Le <b>Premium</b> (≈ 1 700 unités, +2,5 % par trimestre) est sensible à la technologie et à la réputation. La demande suit une saisonnalité (T1 0,96 ; T2 1,04 ; T3 0,92 ; T4 1,08) et un cycle conjoncturel.</p>
+        <p>Deux segments. Le <b>Standard</b> (≈ 6 200 unités par équipe et par trimestre au départ, +{pc(CFG.growth.S)} par trimestre) est sensible au prix. Le <b>Premium</b> (≈ 1 700 unités, +{pc(CFG.growth.P)} par trimestre) est sensible à la technologie et à la réputation. La demande suit une saisonnalité (T1 0,96 ; T2 1,04 ; T3 0,92 ; T4 1,08) et un cycle conjoncturel.</p>
         <p>La part de marché de chaque offre est proportionnelle à son attractivité :</p>
         <pre className="formula">attractivité = présence × (prix / prix de référence)^−ε × (1 + notoriété / 600)^α × (réputation / 60)^β × e^(γ · avance technologique saturée) × (0,85 + 0,15 × taux de service précédent)</pre>
         <Table head={['Paramètre', 'Standard', 'Premium']} rows={[
-          { cells: ['Élasticité-prix ε', '2,2', '1,7'] }, { cells: ['Effet notoriété α', '0,25', '0,30'] }, { cells: ['Effet réputation β', '0,4', '1,0'] }, { cells: ['Effet technologie γ (saturé à ±8 points)', '0,025', '0,05'] },
+          { cells: ['Élasticité-prix ε', '2,2', '1,7'] }, { cells: ['Effet notoriété α', '0,25', '0,30'] }, { cells: ['Effet réputation β', '0,4', '1,0'] }, { cells: [`Effet technologie γ (saturé à ±${CFG.techSat} points)`, dec(CFG.techGamma.S), dec(CFG.techGamma.P)] },
         ]} />
         <p>La notoriété s'accumule : notoriété = 0,65 × notoriété précédente + budget marketing. La technologie progresse avec la R&D à rendements décroissants (≈ 2 × √(budget / 150) points par trimestre) ; les retardataires rattrapent 8 % de leur écart par imitation. Une offre en rupture perd ses ventes : la moitié de la demande non servie se reporte sur les concurrents qui ont du stock. Les concurrents non joueurs ajustent leurs prix à leurs stocks.</p>
       </div>
