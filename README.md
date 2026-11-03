@@ -31,6 +31,7 @@ npm start            # assemble puis lance le serveur multi-poste sur http://loc
 npm run test:all     # assemblage + toutes les suites de tests
 npm run package      # prépare release/ : dossier multi-poste et fichier un poste
 npm run tournoi      # tournoi de stratégies automatiques (calibration)
+npm run sensibilite  # effet de chaque levier de décision, avec son intervalle de confiance
 ```
 
 Au premier lancement, le serveur affiche le code animateur et le conserve dans `server/data/`.
@@ -101,7 +102,7 @@ Les profils sont définis dans `AI_PROFILES` (`src/engine.js`). Ce sont les stra
 
 ## Modèle
 
-Les règles et les formules sont décrites dans le jeu (bouton **Règles**) : attractivité des offres, cascade du TRS, goulots d'étranglement, qualité, climat social, financement et valorisation. Les paramètres sont regroupés dans l'objet `CFG` en tête de `src/engine.js`. Après toute modification, relancez `npm run tournoi` pour vérifier qu'aucune stratégie ne devient dominante.
+Les règles et les formules sont décrites dans le jeu (bouton **Règles**) : attractivité des offres, cascade du TRS, goulots d'étranglement, qualité, climat social, financement et valorisation. Les paramètres sont regroupés dans l'objet `CFG` en tête de `src/engine.js`. Après toute modification, relancez `npm run tournoi` pour vérifier qu'aucune stratégie ne devient dominante, et `npm run sensibilite` pour vérifier que chaque levier garde un effet mesurable.
 
 ## Licence
 

@@ -13,7 +13,8 @@
     "test:net": "node test/net.test.mjs",
     "test:all": "npm run build && npm test && npm run test:ui && npm run test:net",
     "package": "node scripts/build.mjs && node scripts/package.mjs",
-    "tournoi": "node tools/sim.mjs tour 40"
+    "tournoi": "node tools/sim.mjs tour 40",
+    "sensibilite": "node tools/sim.mjs sens 24"
   },
   "devDependencies": {
     "esbuild": "0.24.2",
