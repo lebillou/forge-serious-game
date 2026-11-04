@@ -342,6 +342,27 @@ textarea { width: 100%; border: 1px solid var(--line); border-radius: var(--r); 
   .news li { grid-template-columns: 1fr; gap: 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.print-only { display: none; }
+/* impression du débriefing : couleurs claires quel que soit le thème, commandes masquées, panneaux entiers */
+@page { size: A4 landscape; margin: 12mm; }
+@media print {
+  :root:root:root {
+    --bg: #ffffff; --panel: #ffffff; --panel-2: #f3f6f8; --ink: #17202a; --ink-2: #4a5a6b; --muted: #627080; --line: #d3dae2; --line-2: #e3e8ed;
+    --accent: #1e47a0; --accent-ink: #ffffff; --accent-soft: #e2e9f7;
+    --ok: #1d7448; --ok-soft: #e1f2e8; --warn: #9a5c00; --warn-soft: #faefd8; --bad: #b0281c; --bad-soft: #fbe5e2; --info: #2c5d86; --info-soft: #e3eef7;
+    --steel: #8a96a3; --seg-s: #3d6fb6; --seg-p: #b8661f; --shadow: none; color-scheme: light;
+  }
+  body { background: #fff; font-size: 10pt; padding: 0 !important; }
+  body::before, .topbar, .toast, .conn-lost, .btn, .no-print, .whatif, .tabs, .console-head, details.teacher { display: none !important; }
+  .print-only { display: block; }
+  .main, .page { max-width: none; padding: 0; margin: 0; }
+  .panel { box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
+  .table-wrap { overflow: visible; }
+  .tbl { font-size: 7.5pt; table-layout: auto; }
+  .tbl th { white-space: normal; letter-spacing: 0; font-size: 6.5pt; padding: 4px 3px; }
+  .tbl td, .tbl td.r { padding: 4px 3px; font-size: 7.5pt; }
+  a { color: inherit; text-decoration: none; }
+}
 </style>
 <div id="app"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>

@@ -1149,7 +1149,13 @@ export function Debrief({ G, onBack, onOpenTeam }) {
   const xl = (G.firms[0].history || []).map((h) => QL(h.q));
   return (
     <div className="page">
-      <div className="page-head"><h1>Débriefing</h1>{onBack && <button className="btn btn-ghost" onClick={onBack}>Retour au tableau de bord</button>}</div>
+      <div className="page-head"><h1>Débriefing</h1>
+        <div className="row">
+          <button className="btn btn-ghost" onClick={() => { try { window.print(); } catch { /* impression indisponible */ } }}>Imprimer ou enregistrer en PDF</button>
+          {onBack && <button className="btn btn-ghost" onClick={onBack}>Retour au tableau de bord</button>}
+        </div>
+      </div>
+      <p className="print-only muted">Forge · {G.firms.length} équipes · {G.t} trimestre{G.t > 1 ? 's' : ''} joué{G.t > 1 ? 's' : ''} · scénario {E.SCENARIOS[G.settings.scenario].label} · classement {E.isPureTsr(G) ? 'TSR' : E.scoreLabel(G)} · graine {G.seed} · imprimé le {new Date().toLocaleDateString('fr-FR')}</p>
       <div className="podium">
         {D.teams.map((t, i) => (
           <div key={t.id} className={'podium-card' + (i === 0 ? ' first' : '')} style={{ '--team': t.color }}>
