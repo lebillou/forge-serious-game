@@ -18,6 +18,8 @@ Deux versions partagent le même moteur de simulation et le même format de sauv
 - `forge-un-poste-vX.html` : ouvrez-le dans un navigateur récent.
 - `forge-multiposte-vX.zip` : décompressez-le puis suivez `LISEZMOI.md` (installation de Node.js, lancement, distribution des codes d'équipe, test du réseau, hébergement).
 
+**Multi-poste hébergé, sans rien installer** : [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/lebillou/forge-serious-game). Le fichier `render.yaml` crée le service (Francfort), demande le code animateur et attache un disque de 1 Go pour conserver la partie. Le disque exige une offre payante ; sans lui, la partie est perdue à chaque redémarrage du service : téléchargez-la (.json) en fin de séance. Les équipes se connectent à l'adresse en HTTPS fournie par Render, ce qui évite les réseaux d'entreprise qui isolent les postes entre eux.
+
 Si GitHub Pages est activé (voir plus bas), la version un poste est aussi jouable en ligne à l'adresse du site du dépôt. Le site s'installe comme une application : sur iPhone ou iPad, bouton Partager de Safari, puis « Sur l'écran d'accueil ». Il s'ouvre alors en plein écran et reste jouable hors connexion. Les parties de l'application installée et celles de Safari sont enregistrées séparément ; on passe de l'une à l'autre par un fichier .json.
 
 ## Développement

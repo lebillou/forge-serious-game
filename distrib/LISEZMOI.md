@@ -71,7 +71,9 @@ En cours de partie, « Outils de l'animateur », puis « Pilotage des entreprise
 
 ## 6. Hébergement en ligne (facultatif)
 
-Le serveur fonctionne sur tout hébergeur qui exécute Node.js, comme Render, Railway, Fly.io ou un VPS :
+**Le plus simple : Render.** Depuis la page du dépôt GitHub, le bouton « Deploy to Render » crée le service à partir du fichier `render.yaml` : il demande votre code animateur, puis fournit une adresse en HTTPS à communiquer aux équipes. Le disque persistant prévu (1 Go) conserve la partie entre deux redémarrages et exige une offre payante.
+
+Le serveur fonctionne aussi sur tout autre hébergeur qui exécute Node.js, comme Railway, Fly.io ou un VPS :
 
 - commande de démarrage : `node server.mjs` ;
 - le port est lu dans la variable `PORT`, que fournissent la plupart des hébergeurs ;

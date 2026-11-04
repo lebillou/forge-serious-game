@@ -1,0 +1,23 @@
+# Hébergement de la version multi-poste sur Render (bouton « Deploy to Render » du README).
+# Le disque persistant conserve la partie et le code animateur entre deux redémarrages ;
+# il exige une offre payante. Sans disque, la partie est perdue à chaque redémarrage du service.
+services:
+  - type: web
+    name: forge
+    runtime: node
+    plan: starter
+    region: frankfurt
+    buildCommand: npm ci && npm run build
+    startCommand: node server/server.mjs
+    healthCheckPath: /api/status
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: FORGE_DATA
+        value: /var/data
+      - key: FORGE_ADMIN
+        sync: false # code animateur (6 caractères ou plus), demandé à la création
+    disk:
+      name: forge-data
+      mountPath: /var/data
+      sizeGB: 1
