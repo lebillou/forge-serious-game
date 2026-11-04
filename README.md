@@ -43,7 +43,13 @@ Au premier lancement, le serveur affiche le code animateur et le conserve dans `
 ```
 src/
   engine.js          moteur de simulation pur (aucune dépendance au DOM), déterministe à graine fixée
-  components.jsx     composants d'interface partagés : console d'équipe, rapports, débriefing, règles
+  components.jsx     point d'entrée des composants d'interface partagés (réexporte src/ui/)
+  ui/base.jsx        formats, champs, graphiques, tableaux
+  ui/setup.jsx       création de partie, barre supérieure
+  ui/panels.jsx      tableau de bord : marché, classement, actualités, outils de l'animateur, résultat du trimestre
+  ui/console.jsx     console d'équipe : synthèse, décisions, production, marché, finances, historique, journal
+  ui/debrief.jsx     débriefing et « Et si… ? »
+  ui/rules.jsx       règles et modèle
   app.jsx            version un poste
   net.jsx            client multi-poste
   template.html      styles et squelette communs
