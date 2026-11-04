@@ -2,7 +2,7 @@
 
 Serious game de gestion industrielle pour l'enseignement. Chaque équipe dirige une usine de biens d'équipement, trimestre après trimestre, face aux autres équipes et à trois concurrents régionaux. Elle décide des prix, de la capacité, des effectifs, des achats, de la qualité, de la R&D, du financement et de la croissance externe. Un débriefing automatique compare les trajectoires en fin de partie.
 
-Une partie peut compléter les équipes par des entreprises pilotées par l'IA, choisies parmi six profils de difficulté croissante (voir plus bas).
+Une partie peut compléter les équipes par des entreprises pilotées par l'IA, choisies parmi sept profils de difficulté croissante (voir plus bas).
 
 Deux versions partagent le même moteur de simulation et le même format de sauvegarde :
 
@@ -108,6 +108,7 @@ tools/
 | Low-cost | confirmé | domination par les coûts sur le Standard sans sacrifier le Premium ; la plus forte en environnement stable |
 | Équilibrée | confirmé | gestion saine sur les deux segments |
 | Premium | confirmé | montée en gamme, R&D produit, certification immédiate ; la plus forte en environnement volatil |
+| Experte | expert | s'adapte au marché (positionnement selon l'environnement, prix pilotés par stocks et ruptures, R&D visant une avance modérée) ; premier dans 58 à 79 % des tournois face aux autres profils |
 | Conquérante | perturbateur | croissance à crédit, remises, rachats ; finit souvent surendettée |
 
 Les profils sont définis dans `AI_PROFILES` (`src/engine.js`). Ce sont les stratégies automatiques utilisées pour la calibration (`test/bots.js` les réutilise). Ils sont déterministes : une partie avec IA reste reproductible à graine fixée.

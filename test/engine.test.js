@@ -105,7 +105,7 @@ test('fin de partie et débriefing', () => {
 
 test("entreprises pilotées par l'IA : décisions imposées, déterminisme, bascule, sauvegarde", () => {
   const profiles = Object.keys(AI_PROFILES);
-  assert.deepEqual(profiles, ['passive', 'discount', 'costLeader', 'balanced', 'premium', 'aggressive']);
+  assert.deepEqual(profiles, ['passive', 'discount', 'costLeader', 'balanced', 'premium', 'expert', 'aggressive']);
   const opts = { teams: ['H1', 'IA1', 'IA2', 'H2'], ai: [null, 'premium', 'inconnu', 'aggressive'], seed: 21, nQuarters: 8 };
   let G = newGame(opts);
   assert.deepEqual(G.firms.map((f) => f.ai), [null, 'premium', null, 'aggressive']);
@@ -183,6 +183,17 @@ test('garde-fou de calibration : aucune stratégie dominante, échelle de diffic
     for (const s of strats) assert.ok(wins[s] <= 0.7 * N, `${scenario} : « ${s} » gagne ${wins[s]}/${N} tournois`);
     assert.ok(tsr.passive < tsr.discount && tsr.discount < Math.min(tsr.costLeader, tsr.balanced, tsr.premium),
       `${scenario} : échelle de difficulté inversée ${JSON.stringify(Object.fromEntries(strats.map((s) => [s, Math.round(tsr[s] * 100)])))}`);
+    // l'IA experte remplace la Conquérante : elle doit dépasser les profils confirmés sans gagner à coup sûr
+    const xs = ['passive', 'discount', 'costLeader', 'balanced', 'premium', 'expert'];
+    const xw = Object.fromEntries(xs.map((x) => [x, 0])); const xt = Object.fromEntries(xs.map((x) => [x, 0]));
+    for (let seed = 1; seed <= N; seed++) {
+      const order = xs.map((_, i) => xs[(i + seed) % xs.length]);
+      const G = play(order, { seed, nQuarters: 20, scenario });
+      const best = [...G.firms].sort((a, b) => b.tsr - a.tsr)[0];
+      G.firms.forEach((f, i) => { xt[order[i]] += f.tsr / N; if (f === best) xw[order[i]]++; });
+    }
+    assert.ok(xt.expert > Math.max(xt.costLeader, xt.balanced, xt.premium), `${scenario} : l'experte ne dépasse pas les profils confirmés`);
+    assert.ok(xw.expert < N, `${scenario} : l'experte gagne toutes les parties`);
   }
 });
 

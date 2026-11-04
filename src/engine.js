@@ -568,6 +568,29 @@ export const AI_PROFILES = {
       return aiPlanOps(G, f, d);
     },
   },
+  expert: {
+    label: 'Experte', level: 'Expert',
+    desc: "S'adapte au marché : coûts en environnement stable, différenciation sinon ; prix pilotés par ses stocks et ses ruptures autour du prix moyen ; R&D réglée pour garder une avance technologique modérée. L'adversaire le plus fort.",
+    decide(G, f) {
+      const d = AI_PROFILES.balanced.decide(G, f);
+      const cost = G.settings.scenario === 'stable';
+      if (cost) { d.rd = { ...d.rd, process: 300 }; d.marketing = { ...d.marketing, S: 220 }; }
+      // R&D : viser une avance de 4 points sur la moyenne du marché, relâcher l'effort au-delà
+      for (const s of SEGS) {
+        const base = s === 'P' ? (cost ? 250 : 400) : 120;
+        d.rd[s] = f.tech[s] - marketTechAvg(G, s) < 4 ? base * 1.4 : base * 0.9;
+      }
+      // prix : hausse en cas de rupture, baisse en cas de surstock, dans une bande autour du prix moyen du marché
+      for (const s of SEGS) {
+        const mkt = G.lastMarket ? G.lastMarket.seg[s].avgP : CFG.refPrice[s];
+        const target = s === 'S' ? (cost ? 0.95 : 1.0) : (cost ? 1.0 : 1.06);
+        let p = f.lastDec ? f.lastDec.price[s] : CFG.refPrice[s] * target;
+        if ((f.fill?.[s] ?? 1) < 0.97) p *= 1.015; else if (f.inv[s] > 0.35 * (f.lastSales[s] || 1)) p *= 0.985;
+        d.price[s] = Math.round(clamp(p, mkt * (target - 0.04), mkt * (target + 0.04)) * 1000) / 1000;
+      }
+      return d;
+    },
+  },
   aggressive: {
     label: 'Conquérante', level: 'Perturbateur',
     desc: 'Croissance à crédit : remises, marketing massif, capacité et rachats de concurrents tant que la dette le permet. Finit souvent surendettée.',
