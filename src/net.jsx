@@ -146,6 +146,9 @@ function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen
   const [reveal, setReveal] = useState({});
   const [closeAsk, setCloseAsk] = useState(false);
   const [timerMin, setTimerMin] = useState(15);
+  // partie fermée depuis le débriefing : la suivante s'ouvre sur le tableau de bord, pas sur un débriefing vide
+  const noGame = !!status && !status.hasGame;
+  useEffect(() => { if (noGame && screen === 'debrief') setScreen('main'); }, [noGame, screen, setScreen]);
 
   if (!status) return <div className="panel"><p className="muted">Connexion au serveur…</p></div>;
   if (!status.hasGame || !view || !view.G) {
@@ -440,7 +443,7 @@ function TeamScreen({ view, status, skew, code, onToast, onLogout, reload }) {
   if (finished) extraTabs.unshift({ key: 'debrief', label: 'Débriefing', render: () => <Debrief G={G} /> });
 
   return (
-    <TeamConsole key={finished ? 'fin' : `q${G.t}${byAi ? 'ia' : ''}`} G={G} firmId={fid} draft={draft} submitted={submitted} onDraft={finished || byAi ? null : onDraft} extraTabs={extraTabs} editable={editable}
+    <TeamConsole key={finished ? 'fin' : `q${G.t}${byAi ? 'ia' : ''}`} G={G} firmId={fid} draft={draft} submitted={submitted} onDraft={finished || byAi ? null : onDraft} extraTabs={extraTabs} editable={editable} noteRole={rolesOn ? roles[0] : null}
       subtitle={finished ? 'Partie terminée' : byAi ? `Entreprise pilotée par l'IA (profil ${E.AI_PROFILES[f.ai].label}) sur décision de l'animateur · consultation seule` : `Décisions pour ${QL(q)} · ${nDone}/${G.firms.length} équipes ont validé`}
       actions={<>
         {!finished && status.deadline && <Countdown deadline={status.deadline} skew={skew} />}

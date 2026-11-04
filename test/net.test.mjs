@@ -211,6 +211,9 @@ try {
   assert.equal((await put(['commercial'], { price: { S: 1.12, P: 2.71 }, loan: 999 })).status, 200);
   r = await put(['finance'], { price: { S: 0.5, P: 1.3 }, loan: 4000 });
   assert.deepEqual([r.data.draft.price.S, r.data.draft.price.P, r.data.draft.loan], [1.12, 2.71, 4000], 'fusion par rôle');
+  await put(['commercial'], { notes: { commercial: 'Prix tenus', finance: 'intrus' } });
+  r = await put(['finance'], { notes: { finance: 'Pas de dette nouvelle' } });
+  assert.deepEqual(r.data.draft.notes, { commercial: 'Prix tenus', finance: 'Pas de dette nouvelle' }, 'journal fusionné par rôle');
   r = await put(['commercial'], { price: { S: 1.12, P: 2.71 } }, true);
   assert.equal(r.data.submitted, false); assert.equal(r.data.submittedRoles.commercial, true);
   r = await put(['production', 'finance'], { shifts: 3 }, true);
@@ -239,6 +242,13 @@ try {
 
   for (const b of [A, T1, T2]) b.check();
   log('aucune erreur ni avertissement React sur les trois postes');
+  // limite de tentatives : codes erronés en série → 429, y compris pour un code valide depuis la même adresse
+  let lastStatus = 0;
+  for (let i = 0; i < 32; i++) lastStatus = (await call('/api/login', { method: 'POST', body: { code: 'ZZZZ' + i } })).status;
+  assert.equal(lastStatus, 429, 'tentatives limitées');
+  assert.equal((await call('/api/login', { method: 'POST', body: { code: ADMIN } })).status, 429);
+  assert.equal((await call('/api/status')).status, 200, 'le statut public reste accessible');
+  log('limite de tentatives de connexion');
   for (const b of [A, T1, T2]) b.close();
 } catch (e) {
   // Annotation GitHub Actions : la cause s'affiche dans le résumé de l'exécution.

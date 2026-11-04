@@ -22,6 +22,14 @@ const ADMIN_FILE = path.join(DATA_DIR, 'code-animateur.txt');
 const PAGE_FILE = path.join(DIR, 'public', 'index.html');
 const MAX_BODY = 4 * 1024 * 1024;
 const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+// Limite de tentatives : au-delà de MAX_FAILS codes invalides en FAIL_WINDOW depuis une adresse, connexions refusées pendant FAIL_WINDOW.
+// Seuil volontairement large : une classe derrière une même adresse publique ne doit pas se bloquer après une nouvelle partie.
+const MAX_FAILS = Number(process.env.FORGE_MAX_FAILS) || 30;
+const FAIL_WINDOW = 10 * 60 * 1000;
+const fails = new Map();
+const clientIp = (req) => req.socket.remoteAddress || '?';
+function blocked(ip) { const f = fails.get(ip); if (!f) return false; if (Date.now() - f.since > FAIL_WINDOW) { fails.delete(ip); return false; } return f.n >= MAX_FAILS; }
+function failed(ip) { const f = fails.get(ip); if (!f || Date.now() - f.since > FAIL_WINDOW) fails.set(ip, { n: 1, since: Date.now() }); else f.n++; }
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const genCode = (n = 6) => Array.from(crypto.randomBytes(n), (b) => ALPHA[b % ALPHA.length]).join('');
@@ -129,18 +137,21 @@ async function handle(req, res) {
   const p = url.pathname;
   if (req.method === 'GET' && (p === '/' || p === '/index.html')) return send(req, res, 200, page(), 'text/html; charset=utf-8');
   if (!p.startsWith('/api/')) return err(req, res, 404, 'Introuvable.');
+  const ip = clientIp(req);
+  const limited = (p === '/api/login' || (p !== '/api/status' && req.headers['x-forge-code'])) && blocked(ip);
+  if (limited) return err(req, res, 429, 'Trop de codes erronés depuis ce poste. Réessayez dans une dizaine de minutes.');
   const who = codeRole(req.headers['x-forge-code']);
   if (who && who.role === 'team') lastSeen[who.fid] = Date.now();
 
   if (req.method === 'POST' && p === '/api/login') {
     const body = await readBody(req);
     const r = codeRole(body.code);
-    if (!r) return err(req, res, 401, 'Code inconnu. Vérifiez-le auprès de l’animateur.');
+    if (!r) { failed(ip); return err(req, res, 401, 'Code inconnu. Vérifiez-le auprès de l’animateur.'); }
     if (r.role === 'team') { lastSeen[r.fid] = Date.now(); const f = S.G.firms.find((x) => x.id === r.fid); return send(req, res, 200, { role: 'team', firmId: r.fid, name: f.name }); }
     return send(req, res, 200, { role: 'admin' });
   }
   if (req.method === 'GET' && p === '/api/status') return send(req, res, 200, statusFor(who));
-  if (!who) return err(req, res, 401, 'Connexion requise.');
+  if (!who) { if (req.headers['x-forge-code']) failed(ip); return err(req, res, 401, 'Connexion requise.'); }
 
   if (req.method === 'GET' && p === '/api/view') {
     if (who.role === 'admin') return send(req, res, 200, { role: 'admin', G: S.G, canUndo: !!S.prev, codes: S.codes, deadline: S.deadline, rev: S.rev, addresses: lanAddresses(req) });

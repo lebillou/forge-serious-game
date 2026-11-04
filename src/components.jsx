@@ -416,7 +416,7 @@ export const TABS = [
 ];
 
 
-export function TeamConsole({ G, firmId, draft, onDraft, submitted, actions, subtitle, extraTabs = [], editable = null, banner = null }) {
+export function TeamConsole({ G, firmId, draft, onDraft, submitted, actions, subtitle, extraTabs = [], editable = null, noteRole = null, banner = null }) {
   const f = G.firms.find((x) => x.id === firmId);
   const finished = G.phase === 'finished';
   const [tab, setTab] = useState('synthese');
@@ -443,7 +443,7 @@ export function TeamConsole({ G, firmId, draft, onDraft, submitted, actions, sub
       </nav>
       <div className="console-body">
         {tab === 'synthese' && <Synthese G={G} f={f} onGo={canDecide ? setTab : null} />}
-        {tab === 'decisions' && canDecide && <>{banner}<Decisions G={G} f={f} d={d} onChange={onDraft} submitted={submitted} editable={editable} /></>}
+        {tab === 'decisions' && canDecide && <>{banner}<Decisions G={G} f={f} d={d} onChange={onDraft} submitted={submitted} editable={editable} noteRole={noteRole} /></>}
         {tab === 'production' && <Production G={G} f={f} />}
         {tab === 'marche' && <Marche G={G} f={f} />}
         {tab === 'finances' && <Finances G={G} f={f} />}
@@ -525,7 +525,7 @@ export function Synthese({ G, f, onGo }) {
 // ---------- décisions ----------
 const SECTION_ROLE = Object.fromEntries(Object.entries(E.ROLES).flatMap(([k, r]) => r.sections.map((sec) => [sec, r.label])));
 
-export function Decisions({ G, f, d, onChange, submitted, journal = true, editable = null }) {
+export function Decisions({ G, f, d, onChange, submitted, journal = true, editable = null, noteRole = null }) {
   const lock = (sec) => !!editable && !editable.includes(sec);
   const Lock = ({ sec }) => (lock(sec) ? <span className="role-lock">{SECTION_ROLE[sec]} · lecture seule</span> : null);
   const set = (path, v) => {
@@ -559,9 +559,19 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true, editab
         {journal && (
           <section className="panel dsec">
             <h3>Journal de l'équipe</h3>
-            <Field label="Hypothèses et intentions du trimestre" htmlFor="dec-note" hint={`Ce que vous anticipez, ce que vous cherchez à obtenir, l'arbitrage que vous assumez. Relu au débriefing face aux résultats. ${(d.note || '').length} / ${E.NOTE_MAX} caractères.`}>
-              <textarea id="dec-note" className="note-input" rows="3" maxLength={E.NOTE_MAX} value={d.note || ''} placeholder="Ex. : la demande Premium va accélérer ; on accepte une trésorerie tendue pour acheter une ligne avant les concurrents." onChange={(e) => set('note', e.target.value)} />
-            </Field>
+            {noteRole && E.ROLE_KEYS.filter((r) => r !== noteRole && d.notes && d.notes[r]).map((r) => (
+              <p key={r} className="note-other"><b>{E.ROLES[r].label}</b> : {d.notes[r]}</p>
+            ))}
+            {(() => {
+              const val = noteRole ? (d.notes && d.notes[noteRole]) || '' : d.note || '';
+              const put = (v) => (noteRole ? onChange({ ...JSON.parse(JSON.stringify(d)), notes: { ...(d.notes || {}), [noteRole]: v } }) : set('note', v));
+              return (
+                <Field label={noteRole ? `Hypothèses et intentions du trimestre · votre paragraphe (${E.ROLES[noteRole].label})` : 'Hypothèses et intentions du trimestre'} htmlFor="dec-note"
+                  hint={`Ce que vous anticipez, ce que vous cherchez à obtenir, l'arbitrage que vous assumez. Relu au débriefing face aux résultats. ${val.length} / ${E.NOTE_MAX} caractères.`}>
+                  <textarea id="dec-note" className="note-input" rows="3" maxLength={E.NOTE_MAX} value={val} placeholder="Ex. : la demande Premium va accélérer ; on accepte une trésorerie tendue pour acheter une ligne avant les concurrents." onChange={(e) => put(e.target.value)} />
+                </Field>
+              );
+            })()}
           </section>
         )}
         <section className={'panel dsec' + (lock('commercial') ? ' locked' : '')}>

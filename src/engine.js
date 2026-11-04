@@ -337,6 +337,10 @@ export function mergeRoleDecisions(G, f, current, incoming, roles) {
   const out = JSON.parse(JSON.stringify(current || defaultDecisions(G, f)));
   for (const r of validRoles(roles)) for (const k of ROLES[r].fields) if (incoming && k in incoming) out[k] = JSON.parse(JSON.stringify(incoming[k]));
   if (incoming && typeof incoming.note === 'string') out.note = incoming.note;
+  if (incoming && incoming.notes && typeof incoming.notes === 'object') {
+    out.notes = { ...(out.notes || {}) };
+    for (const r of validRoles(roles)) if (typeof incoming.notes[r] === 'string') out.notes[r] = incoming.notes[r].slice(0, NOTE_MAX);
+  }
   return out;
 }
 
@@ -379,7 +383,10 @@ export function sanitize(G, f, d0) {
     ? clamp(fin(d.tenderBid, 0), 0.1, 10) : null;
   const tg = d.acqBid && G.targets.find((x) => x.id === d.acqBid.targetId && x.status === 'open');
   o.acqBid = tg && fin(d.acqBid.price, 0) > 0 ? { targetId: tg.id, price: Math.max(0, fin(d.acqBid.price, 0)) } : null;
-  o.note = typeof d.note === 'string' ? d.note.slice(0, NOTE_MAX) : '';
+  // mode rôles : un paragraphe par rôle (d.notes), assemblé dans le journal de l'équipe
+  o.note = d.notes && typeof d.notes === 'object'
+    ? ROLE_KEYS.filter((r) => typeof d.notes[r] === 'string' && d.notes[r].trim()).map((r) => `${ROLES[r].label} : ${d.notes[r].trim().slice(0, NOTE_MAX)}`).join('\n')
+    : (typeof d.note === 'string' ? d.note.slice(0, NOTE_MAX) : '');
   return o;
 }
 

@@ -166,3 +166,22 @@ test('journal des décisions, rejeu exact et contrefactuel', () => {
   const old = JSON.parse(exportSave(G)); delete old.game.origin; delete old.game.log;
   assert.equal(canReplay(importSave(JSON.stringify(old))), false);
 });
+
+test('garde-fou de calibration : aucune stratégie dominante, échelle de difficulté respectée', () => {
+  // Échoue si une modification du modèle réintroduit une recette gagnante unique (voir npm run tournoi).
+  const strats = ['passive', 'discount', 'costLeader', 'balanced', 'premium', 'aggressive'];
+  for (const scenario of ['stable', 'standard', 'volatil']) {
+    const N = 12;
+    const wins = Object.fromEntries(strats.map((s) => [s, 0]));
+    const tsr = Object.fromEntries(strats.map((s) => [s, 0]));
+    for (let seed = 1; seed <= N; seed++) {
+      const order = strats.map((_, i) => strats[(i + seed) % strats.length]);
+      const G = play(order, { seed, nQuarters: 20, scenario });
+      const best = [...G.firms].sort((a, b) => b.tsr - a.tsr)[0];
+      G.firms.forEach((f, i) => { tsr[order[i]] += f.tsr / N; if (f === best) wins[order[i]]++; });
+    }
+    for (const s of strats) assert.ok(wins[s] <= 0.7 * N, `${scenario} : « ${s} » gagne ${wins[s]}/${N} tournois`);
+    assert.ok(tsr.passive < tsr.discount && tsr.discount < Math.min(tsr.costLeader, tsr.balanced, tsr.premium),
+      `${scenario} : échelle de difficulté inversée ${JSON.stringify(Object.fromEntries(strats.map((s) => [s, Math.round(tsr[s] * 100)])))}`);
+  }
+});
