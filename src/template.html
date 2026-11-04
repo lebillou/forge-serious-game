@@ -163,6 +163,12 @@ textarea { width: 100%; border: 1px solid var(--line); border-radius: var(--r); 
 .ai-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 8px; }
 .ai-name { flex: 0 1 9rem; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
 .ai-tag { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 4px; font-size: .66rem; font-weight: 700; letter-spacing: .06em; line-height: 1.5; vertical-align: middle; background: var(--info-soft); color: var(--info); font-family: var(--f-mono); }
+.guide { border-left: 4px solid var(--hazard); }
+.guide-steps { margin: 8px 0 12px; padding-left: 1.3em; display: flex; flex-direction: column; gap: 6px; }
+.guide-steps li > div { display: inline; }
+.guide-steps li { padding-right: 4px; }
+.guide-steps .btn { margin-left: 8px; vertical-align: baseline; }
+.dsec, .dec-check { scroll-margin-top: 80px; }
 .fs { border: 0; padding: 0; margin: 0; min-width: 0; }
 .fs.stack { display: flex; flex-direction: column; gap: 10px; }
 .dsec.locked > .fs, .fs[disabled] { opacity: .62; }

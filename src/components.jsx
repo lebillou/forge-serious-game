@@ -578,9 +578,37 @@ export function Synthese({ G, f, onGo }) {
 }
 
 // ---------- décisions ----------
+// Premier trimestre : repères pour prendre en main le formulaire (masquable, mémorisé par équipe et par partie)
+const GUIDE_STEPS = [
+  ['Commercial', 'sec-commercial', "Comparez vos prix au prix moyen du marché, rappelé sous chaque champ. Le Standard est très sensible au prix : une baisse gagne des parts mais rogne la marge. Le Premium l'est moins ; il dépend surtout de la technologie et de la réputation."],
+  ['Production', 'sec-production', 'Alignez la production sur la demande estimée (sous les prix), en tenant compte du stock. La jauge « Charge prévue », à droite, doit rester sous 100 %.'],
+  ['Ressources humaines', 'sec-rh', `Chaque ligne demande ${CFG.opsPerLineShift} opérateurs par équipe de travail. Le contrôle de cohérence compare l'effectif prévu au besoin, départs volontaires compris.`],
+  ['Achats', 'sec-achats', 'Commandez au moins les kits nécessaires au plan, rappelés sous le champ. Le fournisseur A est moins cher, mais livre moins sûrement et apporte plus de défauts.'],
+  ['Qualité et R&D', 'sec-qualite', "La R&D est le levier le plus puissant à long terme. Maintenance et contrôle qualité évitent pannes et rappels : les couper améliore le trimestre et dégrade les suivants."],
+  ['Finance', 'sec-check', "Vérifiez la trésorerie de fin estimée, à droite. Au-delà du découvert autorisé, la banque impose un crédit d'urgence et une surveillance de 4 trimestres."],
+  ['Journal', 'sec-journal', "Notez en deux lignes votre hypothèse principale, puis validez. Le débriefing la confrontera aux résultats."],
+];
+function FirstQuarterGuide({ storeKey }) {
+  const [off, setOff] = useState(() => { try { return localStorage.getItem(storeKey) === '1'; } catch { return false; } });
+  if (off) return null;
+  const go = (id) => { const el = document.getElementById(id); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  return (
+    <section className="panel guide">
+      <h3>Premier trimestre : par où commencer</h3>
+      <p className="muted">Les valeurs proposées reconduisent la situation de départ : une équipe qui ne change rien reste à l'équilibre. Parcourez les sections dans cet ordre.</p>
+      <ol className="guide-steps">
+        {GUIDE_STEPS.map(([t, id, txt]) => (
+          <li key={id}><div><b>{t}</b> · {txt}</div><button className="btn btn-sm btn-ghost" onClick={() => go(id)}>Voir</button></li>
+        ))}
+      </ol>
+      <div className="row"><button className="btn btn-sm" onClick={() => { setOff(true); try { localStorage.setItem(storeKey, '1'); } catch { /* stockage indisponible */ } }}>Masquer ce guide</button></div>
+    </section>
+  );
+}
+
 const SECTION_ROLE = Object.fromEntries(Object.entries(E.ROLES).flatMap(([k, r]) => r.sections.map((sec) => [sec, r.label])));
 
-export function Decisions({ G, f, d, onChange, submitted, journal = true, editable = null, noteRole = null }) {
+export function Decisions({ G, f, d, onChange, submitted, journal = true, guide = true, editable = null, noteRole = null }) {
   const lock = (sec) => !!editable && !editable.includes(sec);
   const Lock = ({ sec }) => (lock(sec) ? <span className="role-lock">{SECTION_ROLE[sec]} · lecture seule</span> : null);
   const set = (path, v) => {
@@ -611,8 +639,9 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true, editab
     <div className="dec-layout">
       <div className="dec-form">
         {submitted && <div className="msg msg-ok">Décisions validées. Toute modification annule la validation : validez de nouveau avant de masquer.</div>}
+        {guide && G.t === 0 && <FirstQuarterGuide key={`${G.seed}-${f.id}`} storeKey={`forge.guide.off.${G.seed}.${f.id}`} />}
         {journal && (
-          <section className="panel dsec">
+          <section id="sec-journal" className="panel dsec">
             <h3>Journal de l'équipe</h3>
             {noteRole && E.ROLE_KEYS.filter((r) => r !== noteRole && d.notes && d.notes[r]).map((r) => (
               <p key={r} className="note-other"><b>{E.ROLES[r].label}</b> : {d.notes[r]}</p>
@@ -629,7 +658,7 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true, editab
             })()}
           </section>
         )}
-        <section className={'panel dsec' + (lock('commercial') ? ' locked' : '')}>
+        <section id="sec-commercial" className={'panel dsec' + (lock('commercial') ? ' locked' : '')}>
           <h3>Commercial<Lock sec="commercial" /></h3>
           <fieldset className="fs" disabled={lock('commercial')}>
           <div className="seg-grid">
@@ -649,7 +678,7 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true, editab
           </fieldset>
         </section>
 
-        <section className={'panel dsec' + (lock('production') ? ' locked' : '')}>
+        <section id="sec-production" className={'panel dsec' + (lock('production') ? ' locked' : '')}>
           <h3>Production et capacité<Lock sec="production" /></h3>
           <fieldset className="fs" disabled={lock('production')}>
           <div className="fgrid">
@@ -675,7 +704,7 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true, editab
           </fieldset>
         </section>
 
-        <section className={'panel dsec' + (lock('rh') ? ' locked' : '')}>
+        <section id="sec-rh" className={'panel dsec' + (lock('rh') ? ' locked' : '')}>
           <h3>Ressources humaines<Lock sec="rh" /></h3>
           <fieldset className="fs" disabled={lock('rh')}>
           <div className="fgrid">
@@ -695,7 +724,7 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true, editab
           </fieldset>
         </section>
 
-        <section className={'panel dsec' + (lock('achats') ? ' locked' : '')}>
+        <section id="sec-achats" className={'panel dsec' + (lock('achats') ? ' locked' : '')}>
           <h3>Achats de composants<Lock sec="achats" /></h3>
           <fieldset className="fs" disabled={lock('achats')}>
           {f.captive ? (
@@ -728,7 +757,7 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true, editab
           </fieldset>
         </section>
 
-        <section className={'panel dsec' + (lock('qualite') ? ' locked' : '')}>
+        <section id="sec-qualite" className={'panel dsec' + (lock('qualite') ? ' locked' : '')}>
           <h3>Qualité, R&D et certification<Lock sec="qualite" /></h3>
           <fieldset className="fs" disabled={lock('qualite')}>
           <div className="fgrid">
@@ -751,7 +780,7 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true, editab
           </fieldset>
         </section>
 
-        <section className={'panel dsec' + (lock('finance') ? ' locked' : '')}>
+        <section id="sec-finance" className={'panel dsec' + (lock('finance') ? ' locked' : '')}>
           <h3>Finance<Lock sec="finance" /></h3>
           <fieldset className="fs" disabled={lock('finance')}>
           <div className="fgrid">
@@ -795,7 +824,7 @@ export function Decisions({ G, f, d, onChange, submitted, journal = true, editab
         </section>
       </div>
 
-      <aside className="dec-check">
+      <aside id="sec-check" className="dec-check">
         <div className="panel check">
           <h3>Contrôle de cohérence</h3>
           <div className="gauge">
@@ -1127,7 +1156,7 @@ export function WhatIf({ G }) {
       {played.note && <p className="whatif-note">Journal de l'équipe pour ce trimestre : « {played.note} »</p>}
       <details className="whatif-form">
         <summary>Modifier les décisions de {QL(q)} ({changes.length ? `${changes.length} modification${changes.length > 1 ? 's' : ''}` : 'identiques à la partie'})</summary>
-        <Decisions G={S0} f={f0} d={d} onChange={(nd) => { setDraft(nd); setRes(null); }} journal={false} />
+        <Decisions G={S0} f={f0} d={d} onChange={(nd) => { setDraft(nd); setRes(null); }} journal={false} guide={false} />
       </details>
       {changes.length > 0 && (
         <Table head={['Décision', 'Jouée', 'Testée']} rows={changes.map(([p, label, fmt]) => ({ cells: [label, fmt(getPath(played, p)), <b>{fmt(getPath(chosen, p))}</b>] }))} />

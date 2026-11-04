@@ -50,6 +50,9 @@ for (let q = 1; q <= 8; q++) {
     await click($$('.tab').find((b) => b.textContent === 'Décisions'), 'décisions');
     await type('#price-S', String(980 + i * 20));
     await type('#mkt-P', '260');
+    if (q === 1 && !document.body.textContent.includes('Premier trimestre : par où commencer')) throw new Error('guide du premier trimestre absent');
+    if (q === 2 && document.body.textContent.includes('Premier trimestre : par où commencer')) throw new Error('guide encore affiché au 2e trimestre');
+    if (q === 1 && i === 1) { await click(btn('Masquer ce guide'), 'masquer le guide'); if (document.body.textContent.includes('par où commencer')) throw new Error('guide non masqué'); }
     if (q === 1 && i === 0) {
       const ta = $('#dec-note'); const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
       set.call(ta, 'Pari sur le Premium'); ta.dispatchEvent(new window.Event('input', { bubbles: true })); await flush();
