@@ -63,6 +63,10 @@ S'il manque des équipes, ou pour corser la partie, confiez une ou plusieurs ent
 
 En cours de partie, « Outils de l'animateur », puis « Pilotage des entreprises », permet de confier à l'IA l'entreprise d'une équipe absente, puis de la lui rendre. Le changement s'applique à la prochaine résolution, et le brouillon de l'équipe est abandonné. Pendant ce temps, l'équipe peut toujours se connecter avec son code pour consulter ses rapports, mais elle ne peut plus saisir de décisions.
 
+### Plusieurs parties sur un même serveur
+
+Avec le code animateur principal (celui affiché au lancement du serveur), le panneau « Parties sur ce serveur » crée des **salles** : chacune accueille une partie indépendante, avec son propre code animateur et ses codes d'équipe. Utile pour faire jouer plusieurs groupes en parallèle, ou pour partager un serveur hébergé entre collègues : remettez à chaque animateur le code de sa salle ; il ne voit que la sienne. Les salles sont enregistrées dans `data/salles/` et reprises au redémarrage. Supprimer une salle efface sa partie et invalide ses codes.
+
 ## 5. Sauvegardes et séances multiples
 
 - **Automatique** : le serveur écrit `data/partie.json` après chaque action. Entre deux séances, arrêtez et relancez simplement le serveur.

@@ -1,5 +1,6 @@
 // Forge — serveur multi-poste (Node ≥ 18, aucune dépendance)
 // Lancement : node server.mjs   (variables facultatives : PORT, FORGE_ADMIN, FORGE_DATA)
+// Plusieurs parties possibles : le code animateur principal crée des salles, chacune avec son propre code animateur.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,39 +38,71 @@ let ADMIN = (process.env.FORGE_ADMIN || '').trim().toUpperCase();
 if (!ADMIN && fs.existsSync(ADMIN_FILE)) ADMIN = fs.readFileSync(ADMIN_FILE, 'utf8').trim().toUpperCase();
 if (!ADMIN) { ADMIN = genCode(6); fs.writeFileSync(ADMIN_FILE, ADMIN); }
 
-// ---------- état ----------
-let S = { G: null, prev: null, codes: {}, deadline: null, rev: 1, srev: 1 };
-const lastSeen = {};
-if (fs.existsSync(STATE_FILE)) {
+// ---------- état : salles ----------
+// La salle principale est la partie historique (data/partie.json, code animateur principal). Le code principal gère
+// aussi les autres salles (data/salles/<id>.json), chacune avec sa partie, son code animateur et ses codes d'équipe.
+const MAIN = 'principale';
+const ROOMS_DIR = path.join(DATA_DIR, 'salles');
+const ROOMS = {};
+const PERSISTED = ['id', 'name', 'admin', 'G', 'prev', 'codes', 'deadline', 'rev', 'srev'];
+const roomFile = (id) => (id === MAIN ? STATE_FILE : path.join(ROOMS_DIR, `${id}.json`));
+const emptyRoom = (id, name, admin) => ({ id, name, admin, G: null, prev: null, codes: {}, deadline: null, rev: 1, srev: 1, lastSeen: {}, saveTimer: null });
+
+function loadRoom(file, fallback) {
+  const R = fallback;
+  if (!fs.existsSync(file)) return R;
   try {
-    const o = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    const o = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (o.G) o.G = E.importSave(JSON.stringify(o.G));
     if (o.prev) o.prev = E.importSave(JSON.stringify(o.prev));
-    S = { ...S, ...o, rev: (o.rev || 1) + 1 };
-    console.log(`Partie reprise depuis ${STATE_FILE} (${S.G ? `${S.G.t}/${S.G.settings.nQuarters} trimestres joués` : 'aucune partie'}).`);
-  } catch (e) { console.error(`Fichier de partie illisible, ignoré : ${e.message}`); }
+    for (const k of PERSISTED) if (k in o) R[k] = o[k];
+    R.rev = (o.rev || 1) + 1;
+    console.log(`Partie reprise depuis ${file} (${R.G ? `${R.G.t}/${R.G.settings.nQuarters} trimestres joués` : 'aucune partie'}).`);
+  } catch (e) { console.error(`Fichier de partie illisible, ignoré : ${file} : ${e.message}`); }
+  return R;
+}
+ROOMS[MAIN] = loadRoom(STATE_FILE, emptyRoom(MAIN, 'Salle principale', ADMIN));
+ROOMS[MAIN].id = MAIN; ROOMS[MAIN].admin = ADMIN; // le code principal vient de FORGE_ADMIN ou de code-animateur.txt
+if (fs.existsSync(ROOMS_DIR)) {
+  for (const fn of fs.readdirSync(ROOMS_DIR).filter((x) => /^[a-z0-9]+\.json$/.test(x))) {
+    const id = fn.slice(0, -5);
+    const R = loadRoom(path.join(ROOMS_DIR, fn), emptyRoom(id, id, null));
+    R.id = id;
+    if (R.admin) ROOMS[id] = R;
+  }
 }
 
-let saveTimer = null;
-function persistNow() {
-  clearTimeout(saveTimer); saveTimer = null;
-  const tmp = STATE_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(S));
-  fs.renameSync(tmp, STATE_FILE);
+function persistNow(R) {
+  clearTimeout(R.saveTimer); R.saveTimer = null;
+  const file = roomFile(R.id);
+  if (R.id !== MAIN) fs.mkdirSync(ROOMS_DIR, { recursive: true });
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(PERSISTED.map((k) => [k, R[k]]))));
+  fs.renameSync(tmp, file);
 }
-function persistSoon() { if (!saveTimer) saveTimer = setTimeout(persistNow, 1000); }
-function changed(kind = 'rev') { if (kind === 'rev') S.rev++; S.srev++; persistNow(); }
+function persistSoon(R) { if (!R.saveTimer) R.saveTimer = setTimeout(() => persistNow(R), 1000); }
+function changed(R, kind = 'rev') { if (kind === 'rev') R.rev++; R.srev++; persistNow(R); }
 
 function codeRole(code) {
   const c = String(code || '').trim().toUpperCase();
   if (!c) return null;
-  if (c === ADMIN) return { role: 'admin' };
-  for (const [fid, k] of Object.entries(S.codes || {})) if (k === c && S.G && S.G.firms.some((f) => f.id === fid)) return { role: 'team', fid };
+  if (c === ADMIN) return { role: 'admin', room: MAIN, master: true };
+  for (const R of Object.values(ROOMS)) {
+    if (c === R.admin) return { role: 'admin', room: R.id, master: false };
+    for (const [fid, k] of Object.entries(R.codes || {})) if (k === c && R.G && R.G.firms.some((f) => f.id === fid)) return { role: 'team', room: R.id, fid };
+  }
   return null;
 }
+// codes uniques sur tout le serveur (codes animateur et codes d'équipe de toutes les salles)
+function freshCode(extra = []) {
+  const used = new Set([ADMIN, ...extra]);
+  for (const R of Object.values(ROOMS)) { if (R.admin) used.add(R.admin); for (const k of Object.values(R.codes || {})) used.add(k); }
+  let c; do c = genCode(6); while (used.has(c));
+  return c;
+}
 function newCodes(G) {
-  const used = new Set([ADMIN]); const codes = {};
-  for (const f of G.firms) { let c; do c = genCode(6); while (used.has(c)); used.add(c); codes[f.id] = c; }
+  const codes = {};
+  for (const f of G.firms) codes[f.id] = freshCode(Object.values(codes));
   return codes;
 }
 
@@ -81,7 +114,7 @@ function publicFirm(f) {
     history: f.history.map((h) => ({ q: h.q, vps: h.vps, tsr: h.tsr, revenue: h.revenue, ni: h.ni, revShare: h.revShare, shareS: h.shareS, shareP: h.shareP })),
   };
 }
-function teamView(fid) {
+function teamView(S, fid) {
   const G = S.G;
   const base = { ...G, rng: 0, seed: 0, injected: [], schedule: [], decisions: {}, submitted: G.submitted || {} };
   if (G.phase === 'finished') return base; // débriefing : tout est public
@@ -124,12 +157,12 @@ function lanAddresses(req) {
 let pageCache = null;
 function page() { if (!pageCache || process.env.FORGE_DEV) pageCache = fs.readFileSync(PAGE_FILE); return pageCache; }
 
-function statusFor(who) {
+function statusFor(S, who) {
   const G = S.G;
   const out = { rev: S.rev, srev: S.srev, now: Date.now(), deadline: S.deadline, hasGame: !!G };
   if (G) Object.assign(out, { phase: G.phase, t: G.t, nQ: G.settings.nQuarters, submitted: G.submitted || {}, drafted: Object.fromEntries(G.firms.map((f) => [f.id, !!(G.decisions && G.decisions[f.id])])),
     submittedRoles: G.settings.roles ? G.submittedRoles || {} : undefined });
-  if (who && who.role === 'admin') out.lastSeen = Object.fromEntries(Object.entries(lastSeen).map(([k, v]) => [k, Date.now() - v]));
+  if (who && who.role === 'admin') out.lastSeen = Object.fromEntries(Object.entries(S.lastSeen).map(([k, v]) => [k, Date.now() - v]));
   return out;
 }
 
@@ -142,22 +175,24 @@ async function handle(req, res) {
   const limited = (p === '/api/login' || (p !== '/api/status' && req.headers['x-forge-code'])) && blocked(ip);
   if (limited) return err(req, res, 429, 'Trop de codes erronés depuis ce poste. Réessayez dans une dizaine de minutes.');
   const who = codeRole(req.headers['x-forge-code']);
-  if (who && who.role === 'team') lastSeen[who.fid] = Date.now();
+  const S = ROOMS[who ? who.room : MAIN];
+  if (who && who.role === 'team') S.lastSeen[who.fid] = Date.now();
 
   if (req.method === 'POST' && p === '/api/login') {
     const body = await readBody(req);
     const r = codeRole(body.code);
     if (!r) { failed(ip); return err(req, res, 401, 'Code inconnu. Vérifiez-le auprès de l’animateur.'); }
-    if (r.role === 'team') { lastSeen[r.fid] = Date.now(); const f = S.G.firms.find((x) => x.id === r.fid); return send(req, res, 200, { role: 'team', firmId: r.fid, name: f.name }); }
-    return send(req, res, 200, { role: 'admin' });
+    const R = ROOMS[r.room];
+    if (r.role === 'team') { R.lastSeen[r.fid] = Date.now(); const f = R.G.firms.find((x) => x.id === r.fid); return send(req, res, 200, { role: 'team', firmId: r.fid, name: f.name }); }
+    return send(req, res, 200, { role: 'admin', master: r.master, room: R.id === MAIN ? null : R.name });
   }
-  if (req.method === 'GET' && p === '/api/status') return send(req, res, 200, statusFor(who));
+  if (req.method === 'GET' && p === '/api/status') return send(req, res, 200, statusFor(S, who));
   if (!who) { if (req.headers['x-forge-code']) failed(ip); return err(req, res, 401, 'Connexion requise.'); }
 
   if (req.method === 'GET' && p === '/api/view') {
-    if (who.role === 'admin') return send(req, res, 200, { role: 'admin', G: S.G, canUndo: !!S.prev, codes: S.codes, deadline: S.deadline, rev: S.rev, addresses: lanAddresses(req) });
+    if (who.role === 'admin') return send(req, res, 200, { role: 'admin', master: who.master, room: S.id === MAIN ? null : S.name, G: S.G, canUndo: !!S.prev, codes: S.codes, deadline: S.deadline, rev: S.rev, addresses: lanAddresses(req) });
     const G = S.G;
-    return send(req, res, 200, { role: 'team', firmId: who.fid, G: teamView(who.fid), draft: (G.decisions || {})[who.fid] || null, submitted: !!(G.submitted || {})[who.fid],
+    return send(req, res, 200, { role: 'team', firmId: who.fid, G: teamView(S, who.fid), draft: (G.decisions || {})[who.fid] || null, submitted: !!(G.submitted || {})[who.fid],
       submittedRoles: (G.submittedRoles || {})[who.fid] || {}, rev: S.rev, srev: S.srev });
   }
 
@@ -181,15 +216,42 @@ async function handle(req, res) {
         G.decisions = { ...(G.decisions || {}), [who.fid]: merged };
         G.submittedRoles = { ...(G.submittedRoles || {}), [who.fid]: sr };
         G.submitted = { ...(G.submitted || {}), [who.fid]: E.ROLE_KEYS.every((r) => sr[r]) };
-        S.srev++; persistSoon();
+        S.srev++; persistSoon(S);
         return send(req, res, 200, { ok: true, submitted: G.submitted[who.fid], submittedRoles: sr, draft: merged, srev: S.srev });
       }
       G.decisions = { ...(G.decisions || {}), [who.fid]: body.decisions };
       G.submitted = { ...(G.submitted || {}), [who.fid]: !!body.submit };
-      S.srev++; persistSoon();
+      S.srev++; persistSoon(S);
       return send(req, res, 200, { ok: true, submitted: !!body.submit, srev: S.srev });
     }
     return err(req, res, 403, 'Action réservée à l’animateur.');
+  }
+
+  // ----- salles (code animateur principal) -----
+  if (p.startsWith('/api/master/')) {
+    if (!who.master) return err(req, res, 403, 'Action réservée au code animateur principal du serveur.');
+    const list = () => Object.values(ROOMS).map((R) => ({ id: R.id, name: R.name, main: R.id === MAIN, admin: R.id === MAIN ? null : R.admin,
+      hasGame: !!R.G, phase: R.G ? R.G.phase : null, t: R.G ? R.G.t : 0, nQ: R.G ? R.G.settings.nQuarters : 0, teams: R.G ? R.G.firms.map((f) => f.name) : [] }));
+    if (req.method === 'GET' && p === '/api/master/rooms') return send(req, res, 200, { rooms: list() });
+    if (req.method !== 'POST') return err(req, res, 405, 'Méthode non autorisée.');
+    const body = await readBody(req);
+    if (p === '/api/master/rooms') {
+      const name = String(body.name || '').trim().slice(0, 40);
+      if (!name) return err(req, res, 400, 'Nommez la salle.');
+      if (Object.keys(ROOMS).length >= 50) return err(req, res, 409, 'Nombre maximal de salles atteint.');
+      let id; do id = crypto.randomBytes(4).toString('hex'); while (ROOMS[id]);
+      ROOMS[id] = emptyRoom(id, name, freshCode()); persistNow(ROOMS[id]);
+      return send(req, res, 200, { ok: true, rooms: list() });
+    }
+    const R = ROOMS[body.id];
+    if (!R || R.id === MAIN) return err(req, res, 400, 'Salle inconnue.');
+    if (p === '/api/master/rooms/newcode') { R.admin = freshCode(); changed(R); return send(req, res, 200, { ok: true, rooms: list() }); }
+    if (p === '/api/master/rooms/delete') {
+      clearTimeout(R.saveTimer); delete ROOMS[R.id];
+      try { fs.unlinkSync(roomFile(R.id)); } catch { /* déjà absent */ }
+      return send(req, res, 200, { ok: true, rooms: list() });
+    }
+    return err(req, res, 404, 'Action inconnue.');
   }
 
   // ----- animateur -----
@@ -202,9 +264,8 @@ async function handle(req, res) {
   switch (p) {
     case '/api/admin/new': {
       const G = E.newGame(body); G.submitted = {};
-      S = { ...S, G, prev: null, codes: newCodes(G), deadline: null };
-      for (const k of Object.keys(lastSeen)) delete lastSeen[k];
-      changed(); return send(req, res, 200, { ok: true });
+      Object.assign(S, { G, prev: null, codes: newCodes(G), deadline: null, lastSeen: {} });
+      changed(S); return send(req, res, 200, { ok: true });
     }
     case '/api/admin/resolve': {
       if (!S.G || S.G.phase === 'finished') return err(req, res, 409, 'Aucun trimestre à résoudre.');
@@ -212,51 +273,50 @@ async function handle(req, res) {
       const ng = E.resolveQuarter(S.G, S.G.decisions || {});
       ng.submitted = {}; ng.submittedRoles = {};
       S.prev = S.G; S.G = ng; S.deadline = null;
-      changed(); return send(req, res, 200, { ok: true, q: ng.t });
+      changed(S); return send(req, res, 200, { ok: true, q: ng.t });
     }
     case '/api/admin/undo':
       if (!S.prev) return err(req, res, 409, 'Rien à annuler.');
-      S.G = S.prev; S.prev = null; changed(); return send(req, res, 200, { ok: true });
+      S.G = S.prev; S.prev = null; changed(S); return send(req, res, 200, { ok: true });
     case '/api/admin/inject':
       if (!S.G || !E.GLOBAL_EVENTS[body.id]) return err(req, res, 400, 'Événement inconnu.');
-      S.G = E.injectEvent(S.G, body.id); changed(); return send(req, res, 200, { ok: true });
+      S.G = E.injectEvent(S.G, body.id); changed(S); return send(req, res, 200, { ok: true });
     case '/api/admin/finish':
       if (!S.G) return err(req, res, 409, 'Aucune partie.');
-      S.G = { ...S.G, phase: 'finished' }; S.deadline = null; changed(); return send(req, res, 200, { ok: true });
+      S.G = { ...S.G, phase: 'finished' }; S.deadline = null; changed(S); return send(req, res, 200, { ok: true });
     case '/api/admin/rename': {
       const nm = String(body.name || '').trim().slice(0, 24);
       if (!S.G || !nm) return err(req, res, 400, 'Nom invalide.');
-      S.G = { ...S.G, firms: S.G.firms.map((f) => (f.id === body.id ? { ...f, name: nm } : f)) }; changed(); return send(req, res, 200, { ok: true });
+      S.G = { ...S.G, firms: S.G.firms.map((f) => (f.id === body.id ? { ...f, name: nm } : f)) }; changed(S); return send(req, res, 200, { ok: true });
     }
     case '/api/admin/ai': {
       if (!S.G || S.G.phase === 'finished') return err(req, res, 409, 'Aucune partie en cours.');
       if (!S.G.firms.some((f) => f.id === body.id)) return err(req, res, 400, 'Équipe inconnue.');
       if (body.profile != null && !E.AI_PROFILES[body.profile]) return err(req, res, 400, 'Profil d’IA inconnu.');
-      S.G = E.setAi(S.G, body.id, body.profile || null); changed(); return send(req, res, 200, { ok: true });
+      S.G = E.setAi(S.G, body.id, body.profile || null); changed(S); return send(req, res, 200, { ok: true });
     }
     case '/api/admin/schedule': {
       if (!S.G || S.G.phase === 'finished') return err(req, res, 409, 'Aucune partie en cours.');
       const list = typeof body.text === 'string' ? E.parseSchedule(body.text) : body.schedule;
-      S.G = E.setSchedule(S.G, list); changed(); return send(req, res, 200, { ok: true, schedule: S.G.schedule });
+      S.G = E.setSchedule(S.G, list); changed(S); return send(req, res, 200, { ok: true, schedule: S.G.schedule });
     }
     case '/api/admin/timer': {
       const m = Number(body.minutes);
       S.deadline = Number.isFinite(m) && m > 0 ? Date.now() + Math.round(m * 60000) : null;
-      changed('srev'); return send(req, res, 200, { ok: true, deadline: S.deadline });
+      changed(S, 'srev'); return send(req, res, 200, { ok: true, deadline: S.deadline });
     }
     case '/api/admin/import': {
       const G = E.importSave(String(body.save || ''));
       if (!G.submitted) G.submitted = {};
-      S = { ...S, G, prev: null, codes: newCodes(G), deadline: null };
-      changed(); return send(req, res, 200, { ok: true });
+      Object.assign(S, { G, prev: null, codes: newCodes(G), deadline: null });
+      changed(S); return send(req, res, 200, { ok: true });
     }
     case '/api/admin/newcode': {
       if (!S.G || !S.G.firms.some((f) => f.id === body.id)) return err(req, res, 400, 'Équipe inconnue.');
-      const used = new Set([ADMIN, ...Object.values(S.codes)]); let c; do c = genCode(6); while (used.has(c));
-      S.codes = { ...S.codes, [body.id]: c }; changed(); return send(req, res, 200, { ok: true });
+      S.codes = { ...S.codes, [body.id]: freshCode() }; changed(S); return send(req, res, 200, { ok: true });
     }
     case '/api/admin/close':
-      S = { ...S, G: null, prev: null, codes: {}, deadline: null }; changed(); return send(req, res, 200, { ok: true });
+      Object.assign(S, { G: null, prev: null, codes: {}, deadline: null }); changed(S); return send(req, res, 200, { ok: true });
     default: return err(req, res, 404, 'Action inconnue.');
   }
 }
@@ -279,7 +339,7 @@ if (isMain) {
     console.log(`  Code animateur     : ${ADMIN}   (conservé dans ${ADMIN_FILE})`);
     console.log('  Arrêt : Ctrl+C. La partie est enregistrée en continu et reprise au redémarrage.\n');
   });
-  const stop = () => { try { if (saveTimer) persistNow(); } catch { /* rien */ } process.exit(0); };
+  const stop = () => { for (const R of Object.values(ROOMS)) { try { if (R.saveTimer) persistNow(R); } catch { /* rien */ } } process.exit(0); };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }
 export { server, ADMIN };

@@ -121,14 +121,14 @@ function NetApp() {
   let body;
   if (!role) body = <Login onLogin={login} error={loginErr} busy={busy} />;
   else if (screen === 'rules') body = <Rules net onBack={() => setScreen('main')} />;
-  else if (role.role === 'admin') body = <AdminScreen view={view} status={status} skew={skew} act={act} code={code} onToast={setToast} screen={screen} setScreen={setScreen} />;
+  else if (role.role === 'admin') body = <AdminScreen view={view} status={status} skew={skew} act={act} code={code} onToast={setToast} screen={screen} setScreen={setScreen} master={!!role.master} />;
   else body = <TeamScreen view={view} status={status} skew={skew} code={code} onToast={setToast} onLogout={() => logout('')} reload={loadView} />;
 
   const G = view && view.G;
   return (
     <div className="app">
       <TopBar G={G} onHome={() => setScreen('main')} onRules={() => setScreen('rules')}>
-        {role && <span className="role-tag">{role.role === 'admin' ? 'Animateur' : (G ? (G.firms.find((f) => f.id === role.firmId) || {}).name : role.name)}</span>}
+        {role && <span className="role-tag">{role.role === 'admin' ? `Animateur${role.room ? ` · ${role.room}` : ''}` : (G ? (G.firms.find((f) => f.id === role.firmId) || {}).name : role.name)}</span>}
         {role && role.role === 'admin' && <button className="btn btn-sm btn-ghost" onClick={() => logout('')}>Déconnexion</button>}
       </TopBar>
       {!conn && <div className="conn-lost">Connexion au serveur perdue. Nouvelle tentative automatique… Vos saisies restent sur ce poste.</div>}
@@ -139,16 +139,16 @@ function NetApp() {
 }
 
 // ---------- animateur ----------
-function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen }) {
+function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen, master }) {
   const [confirm, setConfirm] = useState(false);
   const [result, setResult] = useState(null);
   const [peek, setPeek] = useState(null);
   const [reveal, setReveal] = useState({});
   const [closeAsk, setCloseAsk] = useState(false);
   const [timerMin, setTimerMin] = useState(15);
-  // partie fermée depuis le débriefing : la suivante s'ouvre sur le tableau de bord, pas sur un débriefing vide
-  const noGame = !!status && !status.hasGame;
-  useEffect(() => { if (noGame && screen === 'debrief') setScreen('main'); }, [noGame, screen, setScreen]);
+  // le débriefing n'a de sens que pour une partie terminée : une partie fermée ou remplacée ramène au tableau de bord
+  const notFinished = !!status && (!status.hasGame || status.phase !== 'finished');
+  useEffect(() => { if (notFinished && screen === 'debrief') setScreen('main'); }, [notFinished, screen, setScreen]);
 
   if (!status) return <div className="panel"><p className="muted">Connexion au serveur…</p></div>;
   if (!status.hasGame || !view || !view.G) {
@@ -159,6 +159,7 @@ function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen
           <h2>Reprendre une partie sauvegardée</h2>
           <ImportButton act={act} onToast={onToast} />
         </div>
+        {master && <div className="narrow-panel"><RoomsPanel code={code} onToast={onToast} /></div>}
       </div>
     );
   }
@@ -257,6 +258,7 @@ function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen
             <div className="hint">Le serveur enregistre la partie en continu et la reprend s'il redémarre. Le fichier sert d'archive ou à changer de serveur.</div>
           </div>
         </TeacherTools>
+        {master && <RoomsPanel code={code} onToast={onToast} />}
       </section>
       <aside className="hub-side">
         <RankingPanel G={G} />
@@ -285,6 +287,49 @@ async function exportFile(code, G) {
   a.download = `forge-${G.firms.map((f) => f.name).join('-').normalize('NFD').replace(/[^\w-]+/g, '').slice(0, 40)}-T${G.t}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+// ---------- salles (code animateur principal) ----------
+function RoomsPanel({ code, onToast }) {
+  const [rooms, setRooms] = useState(null);
+  const [name, setName] = useState('');
+  const [show, setShow] = useState({});
+  const [del, setDel] = useState(null);
+  const load = useCallback(() => api('/api/master/rooms', { code }).then((r) => setRooms(r.rooms)).catch((e) => onToast(e.message)), [code, onToast]);
+  useEffect(() => { load(); const id = setInterval(load, 10000); return () => clearInterval(id); }, [load]);
+  const post = (path, body, msg) => api(path, { method: 'POST', code, body }).then((r) => { setRooms(r.rooms); if (msg) onToast(msg); }).catch((e) => onToast(e.message));
+  const others = (rooms || []).filter((r) => !r.main);
+  return (
+    <div className="panel rooms">
+      <div className="panel-head"><h2>Parties sur ce serveur</h2><span className="muted">code principal</span></div>
+      <p className="muted">Chaque salle accueille une partie indépendante, avec son propre code animateur et ses codes d'équipe : un groupe par salle, ou un collègue par salle. Les animateurs des autres salles ne voient que la leur ; ce panneau n'apparaît qu'avec le code principal.</p>
+      {rooms === null ? <p className="muted">Chargement…</p> : (
+        <Table head={['Salle', 'Partie', 'Code animateur', '']} rows={(rooms || []).map((r) => ({
+          cells: [<b>{r.name}</b>,
+            r.hasGame ? `${r.teams.length} équipes · ${r.phase === 'finished' ? 'terminée' : `${r.t}/${r.nQ} trim.`}` : <span className="muted">aucune</span>,
+            r.main ? <span className="muted">votre code</span> : <code className="team-code">{show[r.id] ? r.admin : '••••••'}</code>,
+            r.main ? '' : <span className="row row-right">
+              <button className="btn btn-sm btn-ghost" onClick={() => setShow({ ...show, [r.id]: !show[r.id] })}>{show[r.id] ? 'Masquer' : 'Afficher'}</button>
+              <button className="btn btn-sm btn-ghost" onClick={() => post('/api/master/rooms/newcode', { id: r.id }, `Nouveau code animateur pour ${r.name}.`)}>Nouveau code</button>
+              <button className="btn btn-sm btn-danger" onClick={() => setDel(r)}>Supprimer</button>
+            </span>],
+        }))} />
+      )}
+      <form className="row" onSubmit={(e) => { e.preventDefault(); if (name.trim()) post('/api/master/rooms', { name: name.trim() }, `Salle « ${name.trim()} » créée : communiquez son code animateur.`).then(() => setName('')); }}>
+        <input id="room-name" className="txt" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nom de la nouvelle salle (ex. Groupe B)" />
+        <button className="btn btn-sm" type="submit" disabled={!name.trim()}>Créer une salle</button>
+      </form>
+      {others.length === 0 && rooms && <div className="hint">Aucune autre salle pour le moment.</div>}
+      {del && (
+        <Modal title={`Supprimer la salle « ${del.name} » ?`} onClose={() => setDel(null)} actions={<>
+          <button className="btn btn-ghost" onClick={() => setDel(null)}>Revenir</button>
+          <button className="btn btn-danger" onClick={() => { const r = del; setDel(null); post('/api/master/rooms/delete', { id: r.id }, `Salle « ${r.name} » supprimée.`); }}>Supprimer définitivement</button>
+        </>}>
+          <p>La partie de cette salle est effacée du serveur et ses codes cessent de fonctionner. Demandez à son animateur de la télécharger d'abord s'il veut la conserver.</p>
+        </Modal>
+      )}
+    </div>
+  );
 }
 
 function ImportButton({ act, onToast, small }) {

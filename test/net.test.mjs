@@ -246,6 +246,35 @@ try {
   R1.check(); R1.close();
   log('rôles dans les équipes (fusion des saisies, validation par rôle, sections verrouillées)');
 
+  // ----- plusieurs parties sur un même serveur (salles) -----
+  r = await call('/api/master/rooms', { code: ADMIN });
+  assert.equal(r.data.rooms.length, 1); assert.equal(r.data.rooms[0].main, true);
+  r = await call('/api/master/rooms', { method: 'POST', code: ADMIN, body: { name: 'Groupe B' } });
+  const roomB = r.data.rooms.find((x) => x.name === 'Groupe B'); const cB = roomB.admin;
+  assert.ok(cB && cB !== ADMIN);
+  r = await call('/api/login', { method: 'POST', body: { code: cB } });
+  assert.deepEqual([r.data.role, r.data.master, r.data.room], ['admin', false, 'Groupe B']);
+  assert.equal((await call('/api/master/rooms', { code: cB })).status, 403, 'gestion des salles réservée au code principal');
+  assert.equal((await call('/api/view', { code: cB })).data.G, null, 'nouvelle salle vide');
+  assert.equal((await call('/api/admin/new', { method: 'POST', code: cB, body: { teams: ['Est', 'Ouest', 'Centre'], nQuarters: 4, seed: 2 } })).status, 200);
+  const vB = (await call('/api/view', { code: cB })).data;
+  const vMain = (await call('/api/view', { code: ADMIN })).data;
+  assert.deepEqual(vB.G.firms.map((f) => f.name), ['Est', 'Ouest', 'Centre']);
+  assert.deepEqual(vMain.G.firms.map((f) => f.name), ['Nord', 'Sud'], 'salle principale inchangée');
+  const allCodes = [ADMIN, cB, ...Object.values(vB.codes), ...Object.values(vMain.codes)];
+  assert.equal(new Set(allCodes).size, allCodes.length, 'codes uniques sur le serveur');
+  const tB = (await call('/api/view', { code: vB.codes[vB.G.firms[0].id] })).data;
+  assert.equal(tB.G.firms[0].name, 'Est', 'une équipe de la salle B voit sa partie');
+  assert.equal((await call('/api/admin/resolve', { method: 'POST', code: cB, body: { t: 0 } })).status, 200);
+  assert.equal((await call('/api/view', { code: ADMIN })).data.G.t, 0, 'résolution limitée à la salle');
+  await until(() => A.text().includes('Parties sur ce serveur') && A.text().includes('Groupe B'), 'panneau des salles (code principal)');
+  await stopServer(); await startServer();
+  assert.equal((await call('/api/view', { code: cB })).data.G.t, 1, 'salle reprise après redémarrage');
+  r = await call('/api/master/rooms/delete', { method: 'POST', code: ADMIN, body: { id: roomB.id } });
+  assert.equal(r.data.rooms.length, 1);
+  assert.equal((await call('/api/login', { method: 'POST', body: { code: cB } })).status, 401, 'codes de la salle supprimée invalidés');
+  log('plusieurs parties sur un même serveur (salles, codes, persistance, suppression)');
+
   for (const b of [A, T1, T2]) b.check();
   log('aucune erreur ni avertissement React sur les trois postes');
   // limite de tentatives : codes erronés en série → 429, y compris pour un code valide depuis la même adresse

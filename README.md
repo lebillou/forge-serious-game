@@ -94,6 +94,7 @@ tools/
 - **« Et si… ? »** : la partie conserve son état initial (`G.origin`) et les décisions appliquées à chaque trimestre (`G.log`). Le moteur étant déterministe, le débriefing peut rejouer un trimestre avec d'autres décisions pour une équipe et comparer trimestre et fin de partie (`replayTo`, `counterfactual` dans `src/engine.js`). En multi-poste, ces données ne sont révélées aux équipes qu'en fin de partie.
 - **Classement** : TSR seul par défaut, ou score pondéré (`SCORE_CRITERIA`, `SCORE_PRESETS`) où chaque critère est ramené entre la moins bonne équipe (0) et la meilleure (100). En multi-poste, les scores sont calculés par le serveur.
 - **Chronologie d'événements** : séquence de chocs programmée (`G.schedule`, code d'échange `6:recession 10:norme`) pour faire vivre les mêmes événements à plusieurs groupes ; cachée aux équipes, neutralisée au rejeu.
+- **Salles** (multi-poste) : le code animateur principal crée des salles, chacune avec sa partie, son code animateur et ses codes d'équipe (`data/salles/<id>.json`) ; la salle principale reste `data/partie.json`.
 - **Rôles** (multi-poste, option) : Commercial, Production et Finance saisissent chacun leur partie ; le serveur fusionne les saisies champ par champ (`ROLES`, `mergeRoleDecisions`) et l'équipe est validée quand les trois rôles ont validé.
 
 ## Entreprises pilotées par l'IA
