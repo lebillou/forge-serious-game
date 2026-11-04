@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newGame, resolveQuarter, sanitize, defaultDecisions, finalDebrief, exportSave, importSave, injectEvent, GLOBAL_EVENTS, balanceSheet, bookEquity, AI_PROFILES, aiDecisions, setAi, isAi, ranking, replayTo, counterfactual, canReplay, NOTE_MAX } from '../src/engine.js';
+import { newGame, resolveQuarter, sanitize, defaultDecisions, finalDebrief, exportSave, importSave, injectEvent, GLOBAL_EVENTS, balanceSheet, bookEquity, AI_PROFILES, aiDecisions, setAi, isAi, ranking, replayTo, counterfactual, canReplay, NOTE_MAX, SCORE_PRESETS, scores, isPureTsr, parseSchedule, setSchedule, scheduleText } from '../src/engine.js';
 import { play, deepFinite } from './play.js';
 
 test('nouvelle partie : bilan équilibré, valorisation positive', () => {
@@ -184,4 +184,30 @@ test('garde-fou de calibration : aucune stratégie dominante, échelle de diffic
     assert.ok(tsr.passive < tsr.discount && tsr.discount < Math.min(tsr.costLeader, tsr.balanced, tsr.premium),
       `${scenario} : échelle de difficulté inversée ${JSON.stringify(Object.fromEntries(strats.map((s) => [s, Math.round(tsr[s] * 100)])))}`);
   }
+});
+
+test('classement pondéré et chronologie d’événements', () => {
+  // score : TSR seul par défaut ; pondéré, chaque critère normalisé entre 0 et 100
+  const plain = play(['premium', 'balanced', 'aggressive'], { seed: 6, nQuarters: 8 });
+  assert.ok(isPureTsr(plain));
+  assert.deepEqual(ranking(plain).map((r) => r.id), [...plain.firms].sort((a, b) => b.tsr - a.tsr).map((f) => f.id));
+  const G = play(['premium', 'balanced', 'aggressive'], { seed: 6, nQuarters: 8, score: SCORE_PRESETS.durable.weights });
+  assert.ok(!isPureTsr(G));
+  const sc = scores(G);
+  for (const v of Object.values(sc)) assert.ok(v >= 0 && v <= 100);
+  const R = ranking(G);
+  for (let i = 1; i < R.length; i++) assert.ok(R[i - 1].score >= R[i].score);
+  assert.equal(finalDebrief(G).teams[0].id, R[0].id);
+  assert.deepEqual(newGame({ teams: ['A', 'B'], score: { tsr: 0, climate: 0 } }).settings.score, { tsr: 100 }, 'pondération vide : TSR seul');
+  // chronologie : appliquée au bon trimestre, à la place du tirage aléatoire ; invisible au rejeu
+  assert.throws(() => parseSchedule('4:inconnu'));
+  let H = newGame({ teams: ['A', 'B'], seed: 8, nQuarters: 8, schedule: '3:recession 6:taux 12:mp' });
+  assert.equal(scheduleText(H), '3:recession 6:taux', 'événements hors partie ignorés');
+  for (let i = 0; i < 3; i++) H = resolveQuarter(H, {});
+  assert.ok(H.news.some((n) => n.t === 3 && n.text.includes(GLOBAL_EVENTS.recession.label)));
+  H = setSchedule(H, [{ q: 2, id: 'mp' }, { q: 5, id: 'norme' }]);
+  assert.equal(scheduleText(H), '3:recession 5:norme', 'passé conservé, trimestre déjà joué non programmable');
+  for (let i = 0; i < 3; i++) H = resolveQuarter(H, {});
+  let RP = replayTo(H, 6); RP = resolveQuarter({ ...RP, injected: H.log[5].injected }, H.log[5].dec);
+  assert.equal(JSON.stringify(RP.firms.map((f) => f.history)), JSON.stringify(H.firms.map((f) => f.history)), 'rejeu exact avec chronologie');
 });

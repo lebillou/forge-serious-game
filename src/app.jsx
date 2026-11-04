@@ -140,7 +140,7 @@ function Home({ hasAutosave, autosaveInfo, onNew, onResume, onLoad, onRules }) {
 
 
 // ---------- hub (écran projeté) ----------
-function Hub({ G, prevG, onOpenTeam, onResolve, onUndo, onInject, onFinish, onDebrief, onRename, onSetAi }) {
+function Hub({ G, prevG, onOpenTeam, onResolve, onUndo, onInject, onFinish, onDebrief, onRename, onSetAi, onSchedule }) {
   const [confirm, setConfirm] = useState(false);
   const submitted = G.submitted || {};
   const pending = G.firms.filter((f) => !E.isAi(f) && !submitted[f.id]);
@@ -180,7 +180,7 @@ function Hub({ G, prevG, onOpenTeam, onResolve, onUndo, onInject, onFinish, onDe
           </div>
         )}
         <MarketPanel G={G} />
-        <TeacherTools G={G} onInject={onInject} onRename={onRename} onFinish={onFinish} onSetAi={onSetAi} />
+        <TeacherTools G={G} onInject={onInject} onRename={onRename} onFinish={onFinish} onSetAi={onSetAi} onSchedule={onSchedule} />
       </section>
       <aside className="hub-side">
         <RankingPanel G={G} />
@@ -274,6 +274,7 @@ function App({ initial }) {
     setG((g) => E.setAi(g, fid, profile));
     setToast(profile ? `${f.name} est confiée à l'IA (profil ${E.AI_PROFILES[profile].label}) à partir de ce trimestre.` : `${f.name} est rendue à son équipe.`);
   };
+  const schedule = (list) => { setG((g) => E.setSchedule(g, list)); setToast('Chronologie mise à jour.'); };
   const rename = (fid, name) => { const nm = String(name || '').trim(); if (!nm) return; setG((g) => ({ ...g, firms: g.firms.map((f) => (f.id === fid ? { ...f, name: nm.slice(0, 24) } : f)) })); };
   const loadGame = (g) => { if (!g.submitted) g.submitted = {}; setG(g); setPrevG(null); setScreen(g.phase === 'finished' ? 'debrief' : 'hub'); setToast('Partie chargée'); };
   const showRules = () => { setRulesFrom(screen === 'rules' ? rulesFrom : screen); setScreen('rules'); };
@@ -303,7 +304,7 @@ function App({ initial }) {
   } else if (screen === 'debrief') {
     body = <Debrief G={G} onBack={() => setScreen('hub')} onOpenTeam={(id) => { setRulesFrom('debrief'); openTeam(id); }} />;
   } else {
-    body = <Hub G={G} prevG={prevG} onOpenTeam={openTeam} onResolve={resolve} onUndo={undo} onInject={inject} onFinish={finish} onDebrief={() => setScreen('debrief')} onRename={rename} onSetAi={setAi} />;
+    body = <Hub G={G} prevG={prevG} onOpenTeam={openTeam} onResolve={resolve} onUndo={undo} onInject={inject} onFinish={finish} onDebrief={() => setScreen('debrief')} onRename={rename} onSetAi={setAi} onSchedule={schedule} />;
   }
   const teamOpen = screen === 'team' && revealed;
   return (

@@ -161,6 +161,7 @@ export function newGame(opts = {}) {
       scenario: SCENARIOS[opts.scenario] ? opts.scenario : 'standard',
       events: opts.events !== false, tenders: opts.tenders !== false, ma: opts.ma !== false,
       roles: !!opts.roles, // multi-poste : décisions réparties entre les rôles commercial, production et finance
+      score: scoreWeights(opts.score),
     },
     t: 0, phase: 'decisions',
     macro: { kitIndex: 100, kitSmooth: 100, energyIndex: 100, baseRate: 3.5, salaryBase: CFG.salaryBase, cyclePhase: 0, effects: [] },
@@ -176,7 +177,7 @@ export function newGame(opts = {}) {
       { id: 'robotix', type: 'startup', name: 'Robotix Lab', from: 7, status: 'hidden', owner: null, ask: 3600,
         desc: 'Start-up de robotique et de conception. Apport : +6 points de technologie sur les deux segments et +3 000 k€ de R&D procédé capitalisée.' },
     ],
-    tender: null, news: [], injected: [], decisions: {}, market: { history: [] },
+    tender: null, news: [], injected: [], schedule: [], decisions: {}, market: { history: [] },
   };
   G.macro.cyclePhase = rand(G) * 16;
   // capitaux propres d'ouverture : équilibre du bilan
@@ -207,6 +208,7 @@ export function newGame(opts = {}) {
   for (const f of G.firms) { valuate(G, f); f.vps0 = f.vps; f.tsr = 0; }
   const nAi = G.firms.filter(isAi).length;
   G.news.push({ t: 0, kind: 'info', text: `Ouverture du marché : ${names.length} équipes${nAi ? ` dont ${nAi} pilotée${nAi > 1 ? 's' : ''} par l'IA` : ''}, ${G.settings.nQuarters} trimestres, scénario ${SCENARIOS[G.settings.scenario].label}.` });
+  try { G.schedule = normSchedule(G, typeof opts.schedule === 'string' ? parseSchedule(opts.schedule) : opts.schedule || []); } catch { G.schedule = []; }
   // état initial + décisions appliquées à chaque trimestre : la partie peut être rejouée à l'identique (débriefing « et si… »)
   G.origin = deepClone(G);
   G.log = [];
@@ -629,7 +631,8 @@ export function resolveQuarter(G0, decisionsIn = {}) {
   // 1. Environnement : effets expirés, événements globaux, indices
   G.macro.effects = G.macro.effects.filter((e) => e.until >= q);
   if (G.norm.status === 'announced' && G.norm.at < q) { G.norm.status = 'active'; news.push({ t: q, kind: 'event', text: 'La norme Premium est désormais en vigueur.' }); }
-  const evToApply = [...(G.injected || [])];
+  // événements programmés par l'animateur (pour le prochain trimestre ou dans la chronologie) : ils remplacent le tirage aléatoire
+  const evToApply = [...new Set([...(G.injected || []), ...(G.schedule || []).filter((x) => x.q === q).map((x) => x.id)])];
   G.injected = [];
   const logEntry = G.origin ? { q, injected: [...evToApply], dec: deepClone(dec) } : null;
   if (G.settings.events && q >= 2 && evToApply.length === 0) {
@@ -1288,9 +1291,48 @@ function diagnose(G, f, r, mkt, d) {
 }
 
 // ---------- classement et débriefing ----------
+// ---------- classement : TSR seul ou score pondéré ----------
+const avgHist = (f, k, dflt) => (f.history && f.history.length ? sum(f.history.map((h) => h[k] ?? dflt)) / f.history.length : dflt);
+export const SCORE_CRITERIA = {
+  tsr: { label: 'Création de valeur (TSR)', short: 'TSR', dir: 1, value: (f) => f.tsr },
+  climate: { label: 'Climat social moyen', short: 'climat', dir: 1, value: (f) => avgHist(f, 'climate', f.climate) },
+  quality: { label: 'Qualité livrée (défauts moyens)', short: 'qualité', dir: -1, value: (f) => avgHist(f, 'escRate', 0) },
+  service: { label: 'Taux de service moyen', short: 'service', dir: 1, value: (f) => avgHist(f, 'fill', 1) },
+  roce: { label: 'Rentabilité des capitaux (ROCE moyen)', short: 'ROCE', dir: 1, value: (f) => avgHist(f, 'roce', 0) },
+};
+export const SCORE_PRESETS = {
+  tsr: { label: 'Valeur actionnariale', weights: { tsr: 100 } },
+  durable: { label: 'Performance durable', weights: { tsr: 40, climate: 20, quality: 20, service: 20 } },
+  industriel: { label: 'Excellence industrielle', weights: { tsr: 30, quality: 25, service: 25, roce: 20 } },
+};
+export function scoreWeights(w) {
+  const out = {};
+  for (const k of Object.keys(SCORE_CRITERIA)) { const v = Math.round(clamp(fin(w?.[k], 0), 0, 100)); if (v > 0) out[k] = v; }
+  return Object.keys(out).length ? out : { tsr: 100 };
+}
+const weightsOf = (G) => scoreWeights(G.settings.score || { tsr: 100 });
+export const isPureTsr = (G) => Object.keys(weightsOf(G)).every((k) => k === 'tsr');
+export const scoreLabel = (G) => Object.entries(weightsOf(G)).map(([k, v]) => `${SCORE_CRITERIA[k].short} ${v}`).join(' · ');
+
+// Score de 0 à 100 : chaque critère est ramené entre la moins bonne (0) et la meilleure équipe (100), puis pondéré.
+export function scores(G) {
+  const w = weightsOf(G); const tot = sum(Object.values(w));
+  const out = Object.fromEntries(G.firms.map((f) => [f.id, 0]));
+  for (const [k, wk] of Object.entries(w)) {
+    const c = SCORE_CRITERIA[k];
+    const vals = G.firms.map((f) => fin(c.value(f), 0));
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    G.firms.forEach((f, i) => { const n = hi > lo ? (c.dir > 0 ? (vals[i] - lo) / (hi - lo) : (hi - vals[i]) / (hi - lo)) * 100 : 50; out[f.id] += (wk / tot) * n; });
+  }
+  return out;
+}
+
 export function ranking(G) {
-  return [...G.firms].sort((a, b) => b.tsr - a.tsr).map((f, i) => ({ rank: i + 1, id: f.id, name: f.name, color: f.color, ai: f.ai || null, tsr: f.tsr, vps: f.vps,
-    revenue: f.revHist[f.revHist.length - 1], ni: f.report?.pnl?.ni ?? null, cumDivPS: f.cumDivPS, rating: f.rating }));
+  const pure = isPureTsr(G);
+  const sc = pure ? null : (G.viewScores || scores(G)); // multi-poste : scores calculés par le serveur, qui voit toutes les données
+  const key = (f) => (pure ? f.tsr : sc[f.id] ?? 0);
+  return [...G.firms].sort((a, b) => key(b) - key(a) || b.tsr - a.tsr).map((f, i) => ({ rank: i + 1, id: f.id, name: f.name, color: f.color, ai: f.ai || null, tsr: f.tsr, vps: f.vps,
+    score: sc ? sc[f.id] : null, revenue: f.revHist[f.revHist.length - 1], ni: f.report?.pnl?.ni ?? null, cumDivPS: f.cumDivPS, rating: f.rating }));
 }
 
 export function finalDebrief(G) {
@@ -1308,7 +1350,9 @@ export function finalDebrief(G) {
       certified: certOk(f),
     };
   });
-  teams.sort((a, b) => b.tsr - a.tsr);
+  const pure = isPureTsr(G); const sc = pure ? null : scores(G);
+  for (const t of teams) t.score = sc ? sc[t.id] : null;
+  teams.sort((a, b) => (pure ? b.tsr - a.tsr : b.score - a.score || b.tsr - a.tsr));
   const best = (k, dir = 1) => teams.reduce((b, t) => ((t[k] ?? -Infinity) * dir > (b[k] ?? -Infinity) * dir ? t : b), teams[0]);
   const lessons = [];
   const corr = (xs, ys) => {
@@ -1337,7 +1381,7 @@ export function finalDebrief(G) {
   return {
     teams, lessons,
     awards: [
-      { label: 'Création de valeur (TSR)', team: teams[0]?.name },
+      { label: 'Création de valeur (TSR)', team: best('tsr')?.name },
       { label: 'Excellence opérationnelle (TRS moyen)', team: best('avgTrs')?.name },
       { label: 'Meilleur taux de service', team: best('avgFill')?.name },
       { label: 'Rentabilité (ROCE moyen)', team: best('avgRoce')?.name },
@@ -1356,6 +1400,7 @@ export function replayTo(G, q) {
   let S = deepClone(G.origin);
   for (const f of S.firms) f.ai = null; // les décisions effectivement appliquées sont rejouées telles quelles
   S.decisions = {};
+  S.schedule = []; // les événements programmés figurent déjà dans le journal (injected)
   for (let k = 0; k < q - 1; k++) S = resolveQuarter({ ...S, injected: G.log[k].injected }, G.log[k].dec);
   return S;
 }
@@ -1383,6 +1428,31 @@ export function counterfactual(G, fid, q, decision) {
 }
 
 // ---------- outils animateur ----------
+// Chronologie : liste de { q, id } ; texte d'échange « 6:recession 10:norme » pour rejouer la même séquence avec un autre groupe.
+function normSchedule(G, list) {
+  const seen = new Set(); const out = [];
+  for (const x of Array.isArray(list) ? list : []) {
+    const q = Math.round(fin(x && x.q, 0)); const id = x && x.id;
+    if (!GLOBAL_EVENTS[id] || q <= G.t || q > G.settings.nQuarters || seen.has(`${q}:${id}`)) continue;
+    seen.add(`${q}:${id}`); out.push({ q, id });
+  }
+  return out.sort((a, b) => a.q - b.q || a.id.localeCompare(b.id));
+}
+export function parseSchedule(text) {
+  return String(text || '').split(/[\s,;]+/).filter(Boolean).map((tok) => {
+    const m = /^T?(\d{1,2}):([a-z]+)$/i.exec(tok);
+    if (!m || !GLOBAL_EVENTS[m[2].toLowerCase()]) throw new Error(`Élément de chronologie illisible : « ${tok} » (format attendu : 6:recession).`);
+    return { q: Number(m[1]), id: m[2].toLowerCase() };
+  });
+}
+export const scheduleText = (G) => (G.schedule || []).map((x) => `${x.q}:${x.id}`).join(' ');
+// Remplace la partie future de la chronologie ; les événements déjà joués sont conservés (code d'échange complet).
+export function setSchedule(G, list) {
+  const N = deepClone(G);
+  N.schedule = [...(G.schedule || []).filter((x) => x.q <= G.t), ...normSchedule(N, list)];
+  return N;
+}
+
 export function injectEvent(G, id) {
   if (!GLOBAL_EVENTS[id]) return G;
   const N = deepClone(G);

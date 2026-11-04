@@ -83,11 +83,12 @@ function publicFirm(f) {
 }
 function teamView(fid) {
   const G = S.G;
-  const base = { ...G, rng: 0, seed: 0, injected: [], decisions: {}, submitted: G.submitted || {} };
+  const base = { ...G, rng: 0, seed: 0, injected: [], schedule: [], decisions: {}, submitted: G.submitted || {} };
   if (G.phase === 'finished') return base; // débriefing : tout est public
   // l'état initial et le journal contiennent les décisions de toutes les équipes : révélés seulement en fin de partie
   base.origin = null; base.log = [];
   base.viewTechAvg = { S: E.marketTechAvg(G, 'S'), P: E.marketTechAvg(G, 'P') };
+  if (!E.isPureTsr(G)) base.viewScores = E.scores(G); // les équipes ne voient pas les données internes des concurrents
   base.firms = G.firms.map((f) => (f.id === fid ? f : publicFirm(f)));
   if (G.lastMarket) base.lastMarket = { q: G.lastMarket.q, seg: Object.fromEntries(E.SEGS.map((s) => [s, { total: G.lastMarket.seg[s].total, avgP: G.lastMarket.seg[s].avgP }])) };
   return base;
@@ -232,6 +233,11 @@ async function handle(req, res) {
       if (!S.G.firms.some((f) => f.id === body.id)) return err(req, res, 400, 'Équipe inconnue.');
       if (body.profile != null && !E.AI_PROFILES[body.profile]) return err(req, res, 400, 'Profil d’IA inconnu.');
       S.G = E.setAi(S.G, body.id, body.profile || null); changed(); return send(req, res, 200, { ok: true });
+    }
+    case '/api/admin/schedule': {
+      if (!S.G || S.G.phase === 'finished') return err(req, res, 409, 'Aucune partie en cours.');
+      const list = typeof body.text === 'string' ? E.parseSchedule(body.text) : body.schedule;
+      S.G = E.setSchedule(S.G, list); changed(); return send(req, res, 200, { ok: true, schedule: S.G.schedule });
     }
     case '/api/admin/timer': {
       const m = Number(body.minutes);

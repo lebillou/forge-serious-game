@@ -169,6 +169,12 @@ textarea { width: 100%; border: 1px solid var(--line); border-radius: var(--r); 
 .role-lock { margin-left: 8px; font-family: var(--f-body); font-size: .72rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
 .role-pick { display: flex; flex-direction: column; gap: 10px; max-width: 34rem; }
 .role-chips { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.sched { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.sched li { display: flex; align-items: center; gap: 10px; }
+.sched li span:nth-child(2) { flex: 1; }
+.sched li.done { opacity: .6; }
+.score-grid { margin-top: 10px; }
+.num-ro { font-family: var(--f-mono); }
 .note-other { margin: 0 0 6px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
 .note-input { width: 100%; min-height: 4.5em; resize: vertical; border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; background: var(--panel); }
 .journal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }

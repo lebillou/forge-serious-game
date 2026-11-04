@@ -41,13 +41,15 @@ Le pare-feu peut aussi bloquer le port : vérifiez que Node.js est autorisé sur
 
 ## 4. Déroulement d'une séance
 
-1. **Créez la partie** dans l'interface animateur : noms des équipes, durée, environnement, options.
+1. **Créez la partie** dans l'interface animateur : noms des équipes, durée, environnement, options. Le **classement** porte par défaut sur la création de valeur (TSR) ; vous pouvez choisir « Performance durable », « Excellence industrielle » ou une pondération libre entre TSR, climat social, qualité livrée, taux de service et ROCE. Le champ **Chronologie d'événements** impose une séquence de chocs (par exemple `6:recession 10:norme`) : collez-y le code d'une partie précédente pour que deux groupes vivent les mêmes événements.
 2. **Distribuez les codes.** La rubrique « Accès des équipes » liste un code par équipe. Les codes sont masqués par défaut : affichez-les un par un et remettez-les individuellement, par exemple sur un papier. **Ne les projetez pas** : une équipe qui connaît le code d'une autre peut voir ses données. En cas de doute, « Nouveau code » invalide l'ancien.
 3. **Les équipes se connectent** à l'adresse « Pour les équipes » avec leur code. Votre tableau de bord indique qui est en ligne.
 4. **Lancez le minuteur** (15 minutes par défaut). Le compte à rebours s'affiche sur chaque poste.
 5. **Les équipes saisissent leurs décisions.** Le brouillon est enregistré sur le serveur à chaque modification, si bien qu'un rafraîchissement ou un changement de poste ne fait rien perdre. Elles cliquent ensuite sur « Valider mes décisions », et votre tableau de bord passe leur voyant au vert.
 6. **Résolvez le trimestre.** Une équipe qui n'a pas validé joue son brouillon, ou à défaut ses décisions précédentes. Chaque poste reçoit son rapport dans les secondes qui suivent.
 7. Le **débriefing** final est accessible à l'animateur et à chaque équipe, avec toutes les données de la partie. Il reprend le journal de chaque équipe (ses hypothèses, trimestre par trimestre, face aux résultats) et propose « Et si… ? » : rejouer un trimestre avec d'autres décisions pour en mesurer l'effet.
+
+En cours de partie, « Outils de l'animateur », puis « Chronologie des événements », permet d'ajouter ou de retirer des chocs à venir et affiche le code à réutiliser. Les équipes ne voient pas la chronologie.
 
 En cas d'erreur de manipulation, « Annuler la dernière résolution » revient au trimestre précédent, décisions des équipes comprises.
 

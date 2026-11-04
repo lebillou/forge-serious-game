@@ -182,6 +182,10 @@ export function Setup({ onStart, onCancel, net = false }) {
   const [tenders, setTenders] = useState(true);
   const [ma, setMa] = useState(true);
   const [roles, setRoles] = useState(false);
+  const [preset, setPreset] = useState('tsr');
+  const [weights, setWeights] = useState({ ...E.SCORE_PRESETS.tsr.weights });
+  const [sched, setSched] = useState('');
+  const schedErr = (() => { try { E.parseSchedule(sched); return ''; } catch (e) { return e.message; } })();
   const [seed, setSeed] = useState('');
   return (
     <div className="page narrow">
@@ -217,12 +221,32 @@ export function Setup({ onStart, onCancel, net = false }) {
           <Toggle id="opt-ma" checked={ma} onChange={setMa}>Croissance externe (rachat de concurrents, fournisseur, start-up)</Toggle>
           {net && <Toggle id="opt-roles" checked={roles} onChange={setRoles}>Rôles dans chaque équipe : {E.ROLE_KEYS.map((r) => E.ROLES[r].label.toLowerCase()).join(', ')}. Chacun saisit sa partie sur son poste ; l'équipe est validée quand les trois rôles ont validé.</Toggle>}
         </div>
+        <Field label="Classement" htmlFor="score-tsr" hint="Chaque critère est ramené entre 0 (moins bonne équipe) et 100 (meilleure), puis pondéré. Le TSR seul classe sur la valeur créée pour l'actionnaire.">
+          <div className="seg-ctl">
+            {Object.entries(E.SCORE_PRESETS).map(([k, p]) => <button key={k} id={`score-${k}`} className={'seg-btn' + (preset === k ? ' on' : '')} onClick={() => { setPreset(k); setWeights({ ...p.weights }); }}>{p.label}</button>)}
+            <button id="score-custom" className={'seg-btn' + (preset === 'custom' ? ' on' : '')} onClick={() => setPreset('custom')}>Personnalisé</button>
+          </div>
+        </Field>
+        {preset !== 'tsr' && (
+          <div className="fgrid score-grid">
+            {Object.entries(E.SCORE_CRITERIA).map(([k, c]) => (
+              <Field key={k} label={c.label} htmlFor={`w-${k}`}>
+                {preset === 'custom'
+                  ? <Num id={`w-${k}`} value={weights[k] || 0} step={5} max={100} unit="pts" onChange={(v) => setWeights({ ...weights, [k]: Math.round(v) })} />
+                  : <span className="num-ro">{weights[k] || 0} pts</span>}
+              </Field>
+            ))}
+          </div>
+        )}
+        <Field label="Chronologie d'événements (facultatif)" htmlFor="sched" hint={schedErr || "Pour imposer la même séquence de chocs à plusieurs groupes : collez la chronologie copiée dans les outils de l'animateur d'une autre partie, par exemple 6:recession 10:norme."}>
+          <input id="sched" className="txt" value={sched} onChange={(e) => setSched(e.target.value)} placeholder="aucune" />
+        </Field>
         <Field label="Graine aléatoire (facultatif)" htmlFor="seed" hint="Deux parties lancées avec la même graine et les mêmes décisions donnent les mêmes résultats.">
           <input id="seed" className="txt" inputMode="numeric" value={seed} onChange={(e) => setSeed(e.target.value.replace(/\D/g, ''))} placeholder="aléatoire" />
         </Field>
       </div>
       <div className="row-end">
-        <button className="btn btn-primary" onClick={() => onStart({ teams: names.slice(0, n), ai: ai.slice(0, n), roles: net && roles, nQuarters: nQ, scenario, events, tenders, ma, seed: seed ? Number(seed) : undefined })}>Lancer la partie</button>
+        <button className="btn btn-primary" onClick={() => !schedErr && onStart({ teams: names.slice(0, n), ai: ai.slice(0, n), roles: net && roles, score: E.scoreWeights(weights), schedule: sched, nQuarters: nQ, scenario, events, tenders, ma, seed: seed ? Number(seed) : undefined })}>Lancer la partie</button>
       </div>
     </div>
   );
@@ -298,13 +322,14 @@ export function MarketPanel({ G, hideTargets }) {
 
 export function RankingPanel({ G }) {
   const rank = E.ranking(G);
+  const pure = E.isPureTsr(G);
   return (
     <div className="panel">
-      <div className="panel-head"><h2>Classement</h2><span className="muted">rentabilité pour l'actionnaire</span></div>
-      <Table head={['Équipe', 'Cours', 'TSR', 'CA trim.', 'Notation']} rows={rank.map((r) => ({
-        cells: [<span className="team-cell"><b className="rank">{r.rank}</b><Dot color={r.color} />{r.name}<AiTag ai={r.ai} /></span>, vpsF(r.vps), <span className={r.tsr >= 0 ? 'pos' : 'neg'}>{sg(r.tsr, (x) => pc(x, 0))}</span>, ke(r.revenue), r.rating],
+      <div className="panel-head"><h2>Classement</h2><span className="muted">{pure ? "rentabilité pour l'actionnaire" : 'score pondéré'}</span></div>
+      <Table head={[...['Équipe'], ...(pure ? [] : ['Score']), 'Cours', 'TSR', 'CA trim.', 'Notation']} rows={rank.map((r) => ({
+        cells: [<span className="team-cell"><b className="rank">{r.rank}</b><Dot color={r.color} />{r.name}<AiTag ai={r.ai} /></span>, ...(pure ? [] : [<b>{n0(r.score)}</b>]), vpsF(r.vps), <span className={r.tsr >= 0 ? 'pos' : 'neg'}>{sg(r.tsr, (x) => pc(x, 0))}</span>, ke(r.revenue), r.rating],
       }))} />
-      <div className="hint">TSR : variation du cours depuis le départ, dividendes cumulés inclus.</div>
+      <div className="hint">{pure ? 'TSR : variation du cours depuis le départ, dividendes cumulés inclus.' : `Score sur 100 : ${E.scoreLabel(G)}. Chaque critère est ramené entre la moins bonne équipe (0) et la meilleure (100). TSR : variation du cours, dividendes inclus.`}</div>
     </div>
   );
 }
@@ -324,11 +349,16 @@ export function NewsPanel({ G }) {
   );
 }
 
-export function TeacherTools({ G, onInject, onRename, onFinish, onSetAi, children }) {
+export function TeacherTools({ G, onInject, onRename, onFinish, onSetAi, onSchedule, children }) {
   const [showTeacher, setShowTeacher] = useState(false);
   const [ev, setEv] = useState('mp');
   const [finishAsk, setFinishAsk] = useState(false);
+  const [schQ, setSchQ] = useState(Math.min(G.t + 2, G.settings.nQuarters));
+  const [schEv, setSchEv] = useState('recession');
+  const [schTxt, setSchTxt] = useState('');
   const finished = G.phase === 'finished';
+  const sched = G.schedule || [];
+  const future = sched.filter((x) => x.q > G.t);
   return (
     <details className="panel teacher">
       <summary><h2>Outils de l'animateur</h2></summary>
@@ -360,6 +390,31 @@ export function TeacherTools({ G, onInject, onRename, onFinish, onSetAi, childre
             <div className="hint">Confier une entreprise à l'IA (équipe absente, effectif insuffisant, difficulté accrue) ou la rendre à son équipe. Le changement s'applique à la prochaine résolution ; le brouillon de l'équipe est abandonné.</div>
           </div>
         )}
+        {!finished && onSchedule && (
+          <div className="teacher-row">
+            <label htmlFor="sch-q">Chronologie des événements</label>
+            {sched.length > 0 ? (
+              <ul className="sched">{sched.map((x) => (
+                <li key={`${x.q}${x.id}`} className={x.q <= G.t ? 'done' : ''}><span className="news-q">{QL(x.q)}</span><span>{E.GLOBAL_EVENTS[x.id].label}</span>
+                  {x.q <= G.t ? <span className="muted">joué</span> : <button className="btn btn-sm btn-ghost" onClick={() => onSchedule(future.filter((y) => y !== x))}>Retirer</button>}</li>
+              ))}</ul>
+            ) : <div className="hint">Aucun événement programmé.</div>}
+            <div className="row">
+              <select id="sch-q" value={schQ} onChange={(e) => setSchQ(Number(e.target.value))}>
+                {Array.from({ length: G.settings.nQuarters - G.t }, (_, i) => G.t + 1 + i).map((q) => <option key={q} value={q}>{QL(q)}</option>)}
+              </select>
+              <select id="sch-ev" value={schEv} onChange={(e) => setSchEv(e.target.value)}>
+                {Object.entries(E.GLOBAL_EVENTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+              <button className="btn btn-sm" onClick={() => onSchedule([...future, { q: schQ, id: schEv }])}>Ajouter</button>
+            </div>
+            <div className="row">
+              <input id="sch-txt" className="txt" value={schTxt} onChange={(e) => setSchTxt(e.target.value)} placeholder="remplacer les événements à venir, ex. 6:recession 10:norme" />
+              <button className="btn btn-sm btn-ghost" onClick={() => { try { onSchedule(E.parseSchedule(schTxt)); setSchTxt(''); } catch (e) { setSchTxt(e.message); } }}>Remplacer</button>
+            </div>
+            <div className="hint">Un trimestre programmé remplace le tirage aléatoire des chocs. Pour imposer la même séquence à un autre groupe, copiez le code {sched.length ? <code>{E.scheduleText(G)}</code> : 'de la chronologie'} dans le champ « Chronologie » de sa nouvelle partie. Les équipes ne voient pas la chronologie.</div>
+          </div>
+        )}
         <div className="teacher-row">
           <label>Renommer une équipe</label>
           <div className="rename-grid">
@@ -375,7 +430,7 @@ export function TeacherTools({ G, onInject, onRename, onFinish, onSetAi, childre
             <button className="btn btn-sm btn-danger" onClick={() => setFinishAsk(true)}>Clore la partie maintenant</button>
           </div>
         )}
-        <div className="hint">Graine de la partie : {G.seed} · scénario {E.SCENARIOS[G.settings.scenario].label} · aléas {G.settings.events ? 'actifs' : 'désactivés'} · appels d'offres {G.settings.tenders ? 'actifs' : 'désactivés'} · croissance externe {G.settings.ma ? 'active' : 'désactivée'}</div>
+        <div className="hint">Graine de la partie : {G.seed} · scénario {E.SCENARIOS[G.settings.scenario].label} · aléas {G.settings.events ? 'actifs' : 'désactivés'} · appels d'offres {G.settings.tenders ? 'actifs' : 'désactivés'} · croissance externe {G.settings.ma ? 'active' : 'désactivée'} · classement {E.isPureTsr(G) ? 'TSR' : E.scoreLabel(G)}</div>
       </div>
       {finishAsk && (
         <Modal title="Clore la partie ?" onClose={() => setFinishAsk(false)} actions={<>
@@ -1100,7 +1155,8 @@ export function Debrief({ G, onBack, onOpenTeam }) {
           <div key={t.id} className={'podium-card' + (i === 0 ? ' first' : '')} style={{ '--team': t.color }}>
             <div className="podium-rank">{i + 1}</div>
             <div className="podium-name">{t.name}<AiTag ai={t.ai} /></div>
-            <div className="podium-tsr">{sg(t.tsr, (x) => pc(x, 0))}</div>
+            <div className="podium-tsr">{t.score != null ? `${n0(t.score)} / 100` : sg(t.tsr, (x) => pc(x, 0))}</div>
+            {t.score != null && <div className="muted">TSR {sg(t.tsr, (x) => pc(x, 0))}</div>}
             <div className="muted">cours {vpsF(t.vps0)} → {vpsF(t.vps)}{t.cumDivPS > 0 ? ` · dividendes ${vpsF(t.cumDivPS)}` : ''}</div>
             {onOpenTeam && <button className="btn btn-sm" onClick={() => onOpenTeam(t.id)}>Comptes détaillés</button>}
           </div>
@@ -1118,8 +1174,9 @@ export function Debrief({ G, onBack, onOpenTeam }) {
       </div>
       <div className="panel">
         <h2>Tableau comparatif</h2>
-        <Table head={['Équipe', 'TSR', 'CA cumulé', 'Résultat net cumulé', 'Marge moy.', 'ROCE moy.', 'TRS moy.', 'Service moy.', 'Défauts livrés', 'Réput.', 'Climat', 'Levier final', 'R&D cumulée', 'Invest. cumulés', 'Acquisitions']}
-          rows={D.teams.map((t) => ({ cells: [<span className="team-cell"><Dot color={t.color} />{t.name}<AiTag ai={t.ai} /></span>, sg(t.tsr, (x) => pc(x, 0)), ke(t.revenueTot), ke(t.niTot), pc(t.avgMargin), pc(t.avgRoce), pc(t.avgTrs), pc(t.avgFill), pc(t.avgEsc, 2), n0(t.lastRep), n0(t.lastClimate), t.lastLev != null ? `${nf1.format(t.lastLev)} ×` : '—', ke(t.cum.rd), ke(t.cum.capex + t.cum.acquisitions), t.acquisitions.join(', ') || '—'] }))} />
+        {!E.isPureTsr(G) && <p className="muted">Classement sur un score pondéré : {E.scoreLabel(G)}.</p>}
+        <Table head={['Équipe', ...(E.isPureTsr(G) ? [] : ['Score']), 'TSR', 'CA cumulé', 'Résultat net cumulé', 'Marge moy.', 'ROCE moy.', 'TRS moy.', 'Service moy.', 'Défauts livrés', 'Réput.', 'Climat', 'Levier final', 'R&D cumulée', 'Invest. cumulés', 'Acquisitions']}
+          rows={D.teams.map((t) => ({ cells: [<span className="team-cell"><Dot color={t.color} />{t.name}<AiTag ai={t.ai} /></span>, ...(t.score != null ? [<b>{n0(t.score)}</b>] : []), sg(t.tsr, (x) => pc(x, 0)), ke(t.revenueTot), ke(t.niTot), pc(t.avgMargin), pc(t.avgRoce), pc(t.avgTrs), pc(t.avgFill), pc(t.avgEsc, 2), n0(t.lastRep), n0(t.lastClimate), t.lastLev != null ? `${nf1.format(t.lastLev)} ×` : '—', ke(t.cum.rd), ke(t.cum.capex + t.cum.acquisitions), t.acquisitions.join(', ') || '—'] }))} />
       </div>
       <div className="panel">
         <h2>Enseignements de la partie</h2>
@@ -1150,7 +1207,7 @@ export function Rules({ onBack, net }) {
       <div className="panel">
         <h2>Déroulement</h2>
         <p>Chaque tour représente un trimestre. {net ? "Chaque équipe saisit ses décisions sur son propre poste, connectée avec son code d'accès ; l'animateur suit en direct qui a validé." : "Les équipes saisissent leurs décisions l'une après l'autre sur le même poste, derrière un écran de confidentialité."} L'animateur résout ensuite le trimestre : toutes les décisions sont appliquées simultanément sur un marché commun. Chaque équipe consulte alors son rapport (synthèse et diagnostic, production, marché, finances, historique) avant de préparer le trimestre suivant.</p>
-        <p>Le classement porte sur le <b>rendement total pour l'actionnaire (TSR)</b> : variation du cours de l'action depuis le départ, dividendes cumulés inclus. Les montants sont en k€, sauf les prix unitaires en €.</p>
+        <p>Le classement porte par défaut sur le <b>rendement total pour l'actionnaire (TSR)</b> : variation du cours de l'action depuis le départ, dividendes cumulés inclus. L'animateur peut lui préférer un <b>score pondéré</b> combinant TSR, climat social, qualité livrée, taux de service et ROCE : chaque critère est ramené entre la moins bonne équipe (0) et la meilleure (100), puis pondéré. Les montants sont en k€, sauf les prix unitaires en €.</p>
       </div>
       <div className="panel">
         <h2>Marché</h2>

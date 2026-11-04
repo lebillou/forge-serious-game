@@ -200,11 +200,17 @@ try {
   log('entreprises pilotées par l’IA (création, refus des saisies, bascule, résolution)');
 
   // ----- rôles dans les équipes -----
-  r = await call('/api/admin/new', { method: 'POST', code: ADMIN, body: { teams: ['Nord', 'Sud'], roles: true, nQuarters: 4, seed: 5 } });
+  r = await call('/api/admin/new', { method: 'POST', code: ADMIN, body: { teams: ['Nord', 'Sud'], roles: true, nQuarters: 4, seed: 5, score: { tsr: 50, climate: 50 }, schedule: '3:recession' } });
   assert.equal(r.status, 200);
   const adm5 = (await call('/api/view', { code: ADMIN })).data;
   const nord = adm5.G.firms[0].id; const cN = adm5.codes[nord];
   assert.equal(adm5.G.settings.roles, true);
+  assert.equal(adm5.G.schedule.length, 1);
+  assert.equal((await call('/api/admin/schedule', { method: 'POST', code: ADMIN, body: { text: '2:taux 4:norme' } })).status, 200);
+  assert.equal((await call('/api/admin/schedule', { method: 'POST', code: ADMIN, body: { text: '2:nimporte' } })).status, 400);
+  const tvN = (await call('/api/view', { code: cN })).data.G;
+  assert.equal(tvN.schedule.length, 0, 'chronologie cachée aux équipes');
+  assert.ok(tvN.viewScores && Object.keys(tvN.viewScores).length === 2, 'scores calculés par le serveur');
   assert.equal((await call('/api/decisions', { method: 'PUT', code: cN, body: { q: 1, decisions: { price: { S: 1.1, P: 2.7 } } } })).status, 400, 'saisie sans rôle refusée');
   const put = (roles, decisions, submit = false) => call('/api/decisions', { method: 'PUT', code: cN, body: { q: 1, decisions, submit, roles } });
   // saisies concurrentes : le commercial et la finance envoient chacun un formulaire complet, seuls leurs champs comptent

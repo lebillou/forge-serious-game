@@ -244,6 +244,7 @@ function AdminScreen({ view, status, skew, act, code, onToast, screen, setScreen
         <MarketPanel G={G} />
         <TeacherTools G={G} onInject={(id) => act('/api/admin/inject', { id }).then(() => onToast(`${E.GLOBAL_EVENTS[id].label} programmé pour le prochain trimestre.`)).catch(() => {})}
           onRename={(id, name) => act('/api/admin/rename', { id, name }).catch(() => {})}
+          onSchedule={(schedule) => act('/api/admin/schedule', { schedule }).then(() => onToast('Chronologie mise à jour.')).catch(() => {})}
           onSetAi={(id, profile) => { const f = G.firms.find((x) => x.id === id); act('/api/admin/ai', { id, profile }).then(() => onToast(profile ? `${f.name} est confiée à l'IA (profil ${E.AI_PROFILES[profile].label}).` : `${f.name} est rendue à son équipe : communiquez-lui son code si besoin.`)).catch(() => {}); }}
           onFinish={() => act('/api/admin/finish').then(() => setScreen('debrief')).catch(() => {})}>
           <div className="teacher-row">

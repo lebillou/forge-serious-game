@@ -119,6 +119,8 @@ await click(btn('Nouvelle partie'), 'nouvelle partie IA');
 await click($$('.seg-btn').find((b) => b.textContent === '3'), '3 équipes');
 await click($$('.seg-btn').find((b) => b.textContent === '8 trim.'), '8 trimestres');
 await choose('#team-ai-2', 'premium');
+await click($('#score-durable'), 'classement durable');
+await type('#sched', '2:recession');
 if (!document.body.textContent.includes('Montée en gamme')) throw new Error('description du profil absente');
 await click(btn('Lancer la partie'), 'lancer IA');
 if (!$$('.andon-row')[2].textContent.includes('IA · Premium')) throw new Error('entreprise IA non signalée');
@@ -137,6 +139,11 @@ await click(btn('Résoudre le trimestre'), 'résoudre IA'); // aucune confirmati
 if (!document.body.textContent.includes('résolu')) throw new Error('résolution avec IA');
 await click(btn('Continuer'), 'continuer');
 if (!$$('.ai-tag').length) throw new Error('mention IA absente du classement');
+if (!document.body.textContent.includes('score pondéré') || !document.body.textContent.includes('Récession')) throw new Error('classement pondéré ou chronologie absents');
+$('details.teacher').open = true; await flush();
+await choose('#sch-q', '4'); await choose('#sch-ev', 'norme');
+await click(btn('Ajouter'), 'programmer');
+if (!$$('.sched li').some((li) => li.textContent.includes('Nouvelle norme Premium'))) throw new Error('chronologie non mise à jour');
 // l'animateur confie une équipe absente à l'IA
 await choose('#pilot-e2', 'passive');
 if (!$$('.andon-row')[1].textContent.includes('IA · Prudente')) throw new Error('bascule vers l’IA');
